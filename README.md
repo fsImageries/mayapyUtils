@@ -12,8 +12,14 @@ ABOUT:<br/>
 INSTALLATION:<br/>
 (only tested in OSX 10.14.6, Maya2020, python2.7.16)
   - download the git repo
-  - install:<br/>
-    `cd mayapyUtils`<br/>
-    `mayapy/executable setup.py install`<br/>
+  - install (you have to use sudo here because mayas site-packages is in a secured folder):<br/><br/>
+  First approach:<br/>
+    `cd /into/mayapyUtils`<br/>
+    `sudo /path/to/mayapy/executable setup.py install`<br/>
+    <br/>
+  Second approach:<br/>
+    `sudo /path/to/mayapy/executable -m pip install /path/to/mayapyUtils`
+    
+    
   
   
