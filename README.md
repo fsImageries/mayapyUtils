@@ -10,16 +10,29 @@ ABOUT:<br/>
 <br/>
 <br/>
 INSTALLATION:<br/>
-(only tested in OSX 10.14.6, Maya2020, python2.7.16)
+Only tested in OSX 10.14.6, Maya2020, python2.7.16.<br/>
+You have to use sudo here because mayas site-packages is in a secured folder and
+you also have to locate your mayapy executable, help at: https://knowledge.autodesk.com/support/maya/learn-explore/caas/CloudHelp/cloudhelp/2016/ENU/Maya/files/GUID-83799297-C629-48A8-BCE4-061D3F275215-htm.html.<br/>
+
+<br/>First approach (mayapy pip):
+  
+  - open the terminal, CMD on win
+  
+  - install from git:<br/>
+    -`sudo path/to/mayapy -m pip install git+https://github.com/fsImageries/mayapyUtils.git`
+
+  Second approach (from source):<br/>
+  
+  - download the git repo<br/>
+    `cd into/repo`<br/>
+    `sudo path/to/mayapy -m pip install path/to/repo`<br/>
+    or<br/>
+    `sudo path/to/mayapy setup.py install`<br/>
+  
+  Third approach (copy files):<br/>
+  
   - download the git repo
-  - install (you have to use sudo here because mayas site-packages is in a secured folder):<br/><br/>
-  First approach:<br/>
-    `cd /into/mayapyUtils`<br/>
-    `sudo /path/to/mayapy/executable setup.py install`<br/>
-    <br/>
-  Second approach:<br/>
-    `sudo /path/to/mayapy/executable -m pip install /path/to/mayapyUtils`
-    
-    
+  
+  - copy the mayapyUtils package from src to a folder on your PYTHONPATH, preferably mayas site-packages
   
   
