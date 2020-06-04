@@ -1,0 +1,11 @@
+README.md
+setup.py
+src/mayapyUtils/__init__.py
+src/mayapyUtils/basicMayaIO.py
+src/mayapyUtils/customTypes.py
+src/mayapyUtils/mahelper.py
+src/mayapyUtils/pyhelper.py
+src/mayapyUtils.egg-info/PKG-INFO
+src/mayapyUtils.egg-info/SOURCES.txt
+src/mayapyUtils.egg-info/dependency_links.txt
+src/mayapyUtils.egg-info/top_level.txt
