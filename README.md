@@ -37,3 +37,10 @@ you also have to locate your mayapy executable, help at: https://knowledge.autod
   - download the git repo
   
   - copy the mayapyUtils package from src to a folder on your PYTHONPATH, preferably mayas site-packages
+  
+<br/>  
+DEPENDENCIES:<br/>
+  - setuptools<br/>
+  https://pypi.org/project/setuptools/
+<br/>  
+<br/>
