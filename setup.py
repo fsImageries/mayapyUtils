@@ -2,7 +2,11 @@ import codecs
 import os
 import re
 
-from setuptools import find_packages, setup
+try:
+    from setuptools import find_packages, setup
+except ImportError:
+    from distutils.core import setup
+    find_packages = None
 
 # This whole setup is shamelessly copied from https://github.com/robertjoosten mayapip setup.py.
 # Thanks nonetheless :*
@@ -29,6 +33,7 @@ def find_version(*file_paths):
 
 package = "mayapyUtils"
 here = os.path.abspath(os.path.dirname(__file__))  
+packages = ['mayapyUtils']
 long_description = read("README.md")
 
 
@@ -37,7 +42,7 @@ attrs = {"name":package,
          "author":"Farooq Singh",
          "author_email":"imageries@mail.de",
          "package_dir":{"": "src"},
-         "packages":find_packages(where="src"),
+         "packages":find_packages(where="src") if find_packages else packages,
          "license":"MIT",
          "description":"Maya-Python helper library.",
          "long_description":long_description,
