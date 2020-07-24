@@ -41,6 +41,3 @@ def create_loc_on_pivot(selection=None, nameScheme=None):
             loc = pmc.spaceLocator(n=name)
             
             pmc.move(loc, pos)
-            
-            
-create_loc_on_pivot()
