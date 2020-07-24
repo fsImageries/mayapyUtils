@@ -1,5 +1,5 @@
 from string import digits
-from os.path import split, splitext    # -fix os import
+from os.path import split, splitext    # TODO fix os import
 from time import time
 from contextlib import contextmanager
 

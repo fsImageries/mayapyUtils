@@ -178,20 +178,6 @@ def getMayaWin():
     return window
 
 
-@contextmanager
-def undo_chunk():
-    """
-    Convenient Context Manager for handling Undo Chunks.
-    It automatically opens and closes an UndoChunk when the code in the
-    try-block is successfully run.
-    """
-    try:
-        cmds.undoInfo(ock=True)
-        yield
-    finally:
-        cmds.undoInfo(cck=True)
-
-
 def prefix_name(name, prefix):
     """
     Prefix a name of a given node, checks if a namespace is contained and preserves it.
@@ -211,6 +197,101 @@ def prefix_name(name, prefix):
         newName = "{0}{1}".format(prefix, name.title())
 
     return newName
+
+
+def is_shader_equal(shader1, shader2):   
+    """
+    Get all values of the given shaders and compare them.
+
+    Args:
+        shader1 ([String]): Name of the first shader.
+        shader2 ([String]): Name of the second shader.
+
+    Returns:
+        [Bool]: Whether it is equal or not.
+    """
+    attrsVals1 = _get_shaderValues(shader1)
+    attrsVals2 = _get_shaderValues(shader2)
+    
+    if attrsVals1 == attrsVals2:
+        return True
+    return False 
+
+
+# ----------------------- UI Helper Functions ------------------------- #
+# --------------------------------------------------------------------- #
+
+
+def get_imgPath():
+    multFilter = """Image Files (*.jpg *.psd *.als *.dds *.gif *.cin *.iff *.exr *.png *.eps 
+                *.tga *.tiff *.rla *.bmp *.xpm *.tim *.pic *.sgi *.yuv);;
+                All Files (*.*)"""
+    return cmds.fileDialog2(ff=multFilter, fm=1, cap="Import Image")
+
+def get_filePath():
+    return cmds.fileDialog2(ff="*.obj", fm=1)
+
+
+# -------- Private Helpers -------- #
+
+
+def _get_shaderValues(shader):
+    """
+    Querry every attribute of a given shader and get the values of that attribute.
+    If attributes are compound or have child attributes it will try to get the 
+    values of them or skip it.
+
+    Args:
+        shader ([String]): Name of the shader.
+
+    Returns:
+        [List]: List with all attribute values of the shader.
+    """
+    attrs = cmds.listAttr(shader)
+    # -remove message cuz it's a unique attribute
+    attrs.remove("message")
+    
+    attrsVals = list()
+    
+    for attr in attrs:
+        path = attr.split(".")
+        if len(path) > 1:
+            parent = None
+            for i in range(0, len(path)-1):
+                size = cmds.getAttr("{0}.{1}".format(shader, path[i]), size=True)
+                
+                if parent:
+                    parent = "{0}.{1}[{2}]".format(parent, path[i], size)
+                else:
+                    parent = "{0}[{1}]".format(path[i], size)
+                    
+            attr = "{0}.{1}".format(parent, path[-1])
+            
+        if "compound" in cmds.getAttr("{0}.{1}".format(shader, attr), type=True).lower():
+            continue
+          
+        val = cmds.getAttr("{0}.{1}".format(shader, attr))
+        attrsVals.append(val)
+    return attrsVals
+
+
+# ---------------- Context Managers and Decorators -------------------- #
+# --------------------------------------------------------------------- #
+
+
+@contextmanager
+def undo_chunk():
+    """
+    Convenient Context Manager for handling Undo Chunks.
+    It automatically opens and closes an UndoChunk when the code in the
+    try-block is successfully run.
+    """
+    try:
+        cmds.undoInfo(ock=True)
+        yield
+    finally:
+        cmds.undoInfo(cck=True)
+
 
 # ------------------------------- PLUGIN SETUP ------------------------ #
 # --------------------------------------------------------------------- #
