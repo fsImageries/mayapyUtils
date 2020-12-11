@@ -5,6 +5,8 @@ from contextlib import contextmanager
 from shiboken2 import wrapInstance, getCppPointer
 from PySide2 import QtWidgets, QtCore
 
+import pyhelper
+
 
 # --------------------- Workspace Control Setups ---------------------- #
 # --------------------------------------------------------------------- #
@@ -156,6 +158,86 @@ class WorkspaceControl(object):
         UiSelf.workspaceControl_instance.set_visible(True)
 
 
+# ---------------------- Maya Server/Client  -------------------------- #
+# --------------------------------------------------------------------- #
+
+
+def start_maya_client(func=None):
+    """
+    Template function for easy one-way communication.
+
+    Start the server in maya like this:
+    if __name__ == "__main__":
+        import mahelper
+        import pyhelper
+
+        try:
+            server.deleteLater()
+        except:
+            pass
+
+        cmds.evalDeferred("server = pyhelper.ServerBase(parent=mahelper.getMayaWin())")
+    """
+    client = pyhelper.ClientBase()
+    if client.connect():
+        print("[LOG] Connected to Maya.")
+
+        if func:
+            func()
+        else:
+            print(client.ping())
+
+        if client.disconnect():
+            print("[LOG] Disconnected.")
+    else:
+        print("[ERROR] Failed to connect")
+
+
+# --------------------- Private Helper Functions ---------------------- #
+# --------------------------------------------------------------------- #
+
+
+def _get_shaderValues(shader):
+    """
+    Querry every attribute of a given shader and get the values of that attribute.
+    If attributes are compound or have child attributes it will try to get the 
+    values of them or skip it.
+
+    Args:
+        shader ([String]): Name of the shader.
+
+    Returns:
+        [List]: List with all attribute values of the shader.
+    """
+    attrs = cmds.listAttr(shader)
+    # -remove message cuz it's a unique attribute
+    attrs.remove("message")
+
+    attrsVals = list()
+
+    for attr in attrs:
+        path = attr.split(".")
+        if len(path) > 1:
+            parent = None
+            for i in range(0, len(path)-1):
+                size = cmds.getAttr("{0}.{1}".format(
+                    shader, path[i]), size=True)
+
+                if parent:
+                    parent = "{0}.{1}[{2}]".format(parent, path[i], size)
+                else:
+                    parent = "{0}[{1}]".format(path[i], size)
+
+            attr = "{0}.{1}".format(parent, path[-1])
+
+        if "compound" in cmds.getAttr("{0}.{1}".format(shader, attr), type=True).lower():
+            continue
+
+        val = cmds.getAttr("{0}.{1}".format(shader, attr))
+        attrsVals.append(val)
+    return attrsVals
+
+
 # ---------------------- Maya Helper Functions ------------------------ #
 # --------------------------------------------------------------------- #
 
@@ -199,7 +281,7 @@ def prefix_name(name, prefix):
     return newName
 
 
-def is_shader_equal(shader1, shader2):   
+def is_shader_equal(shader1, shader2):
     """
     Get all values of the given shaders and compare them.
 
@@ -212,10 +294,10 @@ def is_shader_equal(shader1, shader2):
     """
     attrsVals1 = _get_shaderValues(shader1)
     attrsVals2 = _get_shaderValues(shader2)
-    
+
     if attrsVals1 == attrsVals2:
         return True
-    return False 
+    return False
 
 
 # ----------------------- UI Helper Functions ------------------------- #
@@ -228,51 +310,9 @@ def get_imgPath():
                 All Files (*.*)"""
     return cmds.fileDialog2(ff=multFilter, fm=1, cap="Import Image")
 
+
 def get_filePath():
     return cmds.fileDialog2(ff="*.obj", fm=1)
-
-
-# -------- Private Helpers -------- #
-
-
-def _get_shaderValues(shader):
-    """
-    Querry every attribute of a given shader and get the values of that attribute.
-    If attributes are compound or have child attributes it will try to get the 
-    values of them or skip it.
-
-    Args:
-        shader ([String]): Name of the shader.
-
-    Returns:
-        [List]: List with all attribute values of the shader.
-    """
-    attrs = cmds.listAttr(shader)
-    # -remove message cuz it's a unique attribute
-    attrs.remove("message")
-    
-    attrsVals = list()
-    
-    for attr in attrs:
-        path = attr.split(".")
-        if len(path) > 1:
-            parent = None
-            for i in range(0, len(path)-1):
-                size = cmds.getAttr("{0}.{1}".format(shader, path[i]), size=True)
-                
-                if parent:
-                    parent = "{0}.{1}[{2}]".format(parent, path[i], size)
-                else:
-                    parent = "{0}[{1}]".format(path[i], size)
-                    
-            attr = "{0}.{1}".format(parent, path[-1])
-            
-        if "compound" in cmds.getAttr("{0}.{1}".format(shader, attr), type=True).lower():
-            continue
-          
-        val = cmds.getAttr("{0}.{1}".format(shader, attr))
-        attrsVals.append(val)
-    return attrsVals
 
 
 # ---------------- Context Managers and Decorators -------------------- #
@@ -306,3 +346,8 @@ def reload_plugin(plugin_name, unload=False):
         cmds.evalDeferred("cmds.loadPlugin('{0}')".format(plugin_name))
     else:
         cmds.evalDeferred("cmds.unloadPlugin('{0}')".format(plugin_name))
+
+
+if __name__ == "__main__":
+
+    start_maya_client()

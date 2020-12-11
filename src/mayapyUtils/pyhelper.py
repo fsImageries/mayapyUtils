@@ -1,9 +1,15 @@
+# pylint: disable=bare-except
+
 from string import digits
 from os.path import split, splitext    # TODO fix os import
-from time import time
+from time import time, sleep
 from contextlib import contextmanager
+from PySide2 import QtCore, QtNetwork
 
 import os
+import traceback
+import json
+import socket
 
 try:
     from os import scandir
@@ -14,10 +20,20 @@ except ImportError:
         scandir = None
 
 
+# ----------------------- Static Information -------------------------- #
+# --------------------------------------------------------------------- #
+
+
+HOST = "localhost"
+PORT = 6550
+HEADER_SIZE = 10
+
+
 # --------------------- Python Helper Functions ----------------------- #
 # --------------------------------------------------------------------- #
 
-def filenameFromPath(filepath):
+
+def filename_from_path(filepath):
     """
     Get the file name without extension from a file path.
 
@@ -30,7 +46,7 @@ def filenameFromPath(filepath):
     return os.path.splitext(os.path.basename(filepath))[0]
 
 
-def basenamePlus(filepath):
+def basename_plus(filepath):
     """ Get every property of a filename as item """
 
     # Split of standard properties.
@@ -45,11 +61,11 @@ def basenamePlus(filepath):
     return name_noext, name_nodigits, basedir, ext
 
 
-def getImgSeq(filepath):
+def get_img_seq(filepath):
     """ Get list with all images of a chosen picture """
 
     # Get Filename with and without padding, Directory of the file and extension.
-    _, filename_nodigits, basedir, ext = basenamePlus(filepath)
+    _, filename_nodigits, basedir, ext = basename_plus(filepath)
 
     # Check if Input is part of a
     if filename_nodigits is None:
@@ -71,7 +87,7 @@ def getImgSeq(filepath):
     return []
 
 
-def getPadedNames(name, padding, sequenceLen):
+def get_padded_names(name, padding, sequenceLen):
 
     if padding == 0:
         padVal = len(str(sequenceLen))
@@ -137,3 +153,206 @@ def block_signals(QObj):
         yield
     finally:
         QObj.blockSignals(False)
+
+
+# --------------------- PySide2 Server/Client  ------------------------ #
+# --------------------------------------------------------------------- #
+
+
+class ServerBase(QtCore.QObject):
+
+    PORT = PORT
+    HEADER_SIZE = HEADER_SIZE
+
+    def __init__(self, parent):
+        super(ServerBase, self).__init__(parent)
+
+        self.port = self.__class__.PORT
+        self.initialize()
+
+    def initialize(self):
+        self.server = QtNetwork.QTcpServer(self)
+        self.server.newConnection.connect(self.establish_connection)
+
+        if self.listen():
+            print("[LOG] Server listening on post: {0}".format(self.port))
+        else:
+            print("[ERROR] Server initialization failed.")
+
+    def listen(self):
+        if not self.server.isListening():
+            return self.server.listen(QtNetwork.QHostAddress.LocalHost, self.port)
+
+        return False
+
+    def establish_connection(self):
+        self.socket = self.server.nextPendingConnection()
+        if self.socket.state() == QtNetwork.QTcpSocket.ConnectedState:
+            self.socket.disconnected.connect(self.on_disconnect)
+            self.socket.readyRead.connect(self.read)
+
+            print("[LOG] Connection established.")
+
+    def on_disconnect(self):
+        self.socket.disconnected.disconnect()
+        self.socket.readyRead.disconnect()
+
+        self.socket.deleteLater()
+
+        print("[LOG] Connection Disconnected.")
+
+    def read(self):
+        bytes_remaining = -1
+        json_data = ""
+
+        while self.socket.bytesAvailable():
+            # -Header
+            if bytes_remaining <= 0:
+                byte_array = self.socket.read(ServerBase.HEADER_SIZE)
+                bytes_remaining, valid = byte_array.toInt()
+
+                if not valid:
+                    bytes_remaining = -1
+                    self.write_error("Invalid Header")
+
+                    self.socket.readAll()
+                    return
+
+            # -Body
+            if bytes_remaining > 0:
+                byte_array = self.socket.read(bytes_remaining)
+                bytes_remaining -= len(byte_array)
+                json_data += byte_array.data().decode()
+
+                if bytes_remaining == 0:
+                    bytes_remaining = -1
+
+                    data = json.loads(json_data)
+
+                    # -DEBUG
+                    self.write({"success": True})
+
+                    json_data = ""
+
+    def write(self, data):
+        json_reply = json.dumps(data)
+
+        if self.socket.state() == QtNetwork.QTcpSocket.ConnectedState:
+            header = "{0}".format(len(json_reply.encode())).zfill(
+                ServerBase.HEADER_SIZE)
+
+            data = QtCore.QByteArray(
+                "{0}{1}".format(header, json_reply).encode())
+
+            self.socket.write(data)
+
+    def write_error(self, err_msg):
+        reply = {
+            "success": False,
+            "msg": err_msg
+        }
+        self.write(reply)
+
+
+class ClientBase(object):
+
+    PORT = PORT
+    HEADER_SIZE = HEADER_SIZE
+
+    def __init__(self, timeout=2):
+        self.timeout = timeout
+        self.port = self.__class__.PORT
+
+        self.discard_count = 0
+
+    def connect(self, port=-1):
+        if port >= 0:
+            self.port = port
+
+        try:
+            self.client_socket = socket.socket(
+                socket.AF_INET, socket.SOCK_STREAM)
+            self.client_socket.connect((HOST, self.port))
+            self.client_socket.setblocking(0)
+        except:
+            traceback.print_exc()
+            return False
+
+        return True
+
+    def disconnect(self):
+        try:
+            self.client_socket.close()
+        except:
+            traceback.print_exc()
+            return False
+
+        return True
+
+    def send(self, data):
+        json_data = json.dumps(data)
+
+        message = list()
+        message.append("{0:10d}".format(len(json_data.encode())))
+        message.append(json_data)
+
+        try:
+            msg_str = "".join(message)
+            self.client_socket.sendall(msg_str.encode())
+        except:
+            traceback.print_exc()
+            return None
+
+        return self.recv()
+
+    def recv(self):
+        total_data = list()
+        data = ""
+        reply_length = 0
+        bytes_remaining = ClientBase.HEADER_SIZE
+
+        start_time = time()
+        while time() - start_time < self.timeout:
+            try:
+                data = self.client_socket.recv(bytes_remaining)
+            except:
+                sleep(0.01)
+                continue
+
+            if data:
+                total_data.append(data)
+
+                bytes_remaining -= len(data)
+                if(bytes_remaining <= 0):
+                    for i in range(len(total_data)):
+                        total_data[i] = total_data[i].decode()
+
+                    if reply_length == 0:
+                        header = "".join(total_data)
+                        reply_length = int(header)
+                        bytes_remaining = reply_length
+                        total_data = list()
+                    else:
+                        reply_json = "".join(total_data)
+                        return json.loads(reply_json)
+
+        raise RuntimeError("[ERROR] Timeout waiting for response.")
+
+    def is_valid_data(self, data):
+        if not data:
+            print("[ERROR] Invalid Data.")
+            return False
+
+        if not data["success"]:
+            print("[ERROR] {0} failed: {1}".format(data["cmd"], data["msg"]))
+            return False
+
+        return True
+
+    def ping(self):
+        data = {"cmd": "ping"}
+        reply = self.send(data)
+
+        if self.is_valid_data(reply):
+            return True
+        return False

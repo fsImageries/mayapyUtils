@@ -2,7 +2,6 @@ from maya.api import OpenMaya as api2
 from maya import cmds
 from functools import partial
 
-import os
 import re
 import mahelper
 import pyhelper
@@ -193,7 +192,7 @@ class MIO_BasicIO(object):
         asSrc = False if incoming else True
 
         connectedTo = customTypes.LinkedList(((p.connectedTo(asDst, asSrc), p)
-                       for p in connections if p.connectedTo(asDst, asSrc)))
+                                              for p in connections if p.connectedTo(asDst, asSrc)))
 
         length = len(connectedTo)
         if length <= 0:
