@@ -1,11 +1,41 @@
 import maya.OpenMayaUI as apiUI
 import maya.cmds as cmds
+import maya.api.OpenMaya as api2
+import maya.api.OpenMayaAnim as api2a
 
 from contextlib import contextmanager
 from shiboken2 import wrapInstance, getCppPointer
 from PySide2 import QtWidgets, QtCore
 
 import pyhelper
+
+import sys
+
+
+# ------------------------ Static Information ------------------------- #
+# --------------------------------------------------------------------- #
+
+
+CocoPairs = [
+    (1, 2), (1, 5), (2, 3), (3, 4), (5, 6), (6,
+                                             7), (1, 8), (8, 9), (9, 10), (1, 11),
+    (11, 12), (12, 13), (1, 0), (0, 14), (14,
+                                          16), (0, 15), (15, 17), (2, 16), (5, 17)
+]
+
+VideoPosePairs = [[0, 4], [4, 5], [5, 6],
+                  [0, 1], [1, 2], [2, 3],
+                  [0, 7], [7, 8], [8, 9], [9, 10],
+                  [8, 11], [11, 12], [12, 13],
+                  [8, 14], [14, 15], [15, 16]]
+
+VideoPoseNames = {0: "Hip", 1: "rThigh", 2: "rShin", 3: "rFoot",
+                  4: "lThigh", 5: "lShin", 6: "lFoot",
+                  7: "upperSpine", 8: "lowerSpine", 9: "Neck", 10: "Head",
+                  11: "lShoulder", 12: "lElbow", 13: "lHand",
+                  14: "rShoulder", 15: "rElbow", 16: "rHand"}
+
+VideoPoseNamesRev = {v: k for k, v in VideoPoseNames.items()}
 
 
 # --------------------- Workspace Control Setups ---------------------- #
@@ -162,9 +192,10 @@ class WorkspaceControl(object):
 # --------------------------------------------------------------------- #
 
 
-def start_maya_client(func=None):
+class O_NectMayaServer(pyhelper.ServerBase):
     """
-    Template function for easy one-way communication.
+    Get O-Nect at https://github.com/O-Nect/O-Nect.git
+
 
     Start the server in maya like this:
     if __name__ == "__main__":
@@ -178,19 +209,240 @@ def start_maya_client(func=None):
 
         cmds.evalDeferred("server = pyhelper.ServerBase(parent=mahelper.getMayaWin())")
     """
-    client = pyhelper.ClientBase()
-    if client.connect():
-        print("[LOG] Connected to Maya.")
 
-        if func:
-            func()
+    def __init__(self, parent=None, mult=1, static=None):
+        if not static:
+            super(O_NectMayaServer, self).__init__(parent)
+
+        self.keyables = dict()
+        self.group = None
+        self.group_check = True
+        self.mult = mult
+        self.static = static
+        self.pairs = CocoPairs
+
+    def process_data(self, data):
+
+        frame_id = data['frame_id']
+        iter_id = data["iter_id"]
+
+        mult = self.mult
+
+        newTr = [mult*data['x1_coord'], mult*data['y1_coord']]
+        newTr2 = [mult*data['x2_coord'], mult*data['y2_coord']]
+
+        p1_id = data['p1_id']
+        p2_id = data['p2_id']
+
+        obj1 = self.get_obj(p1_id)
+        obj2 = self.get_obj(p2_id)
+
+        _, _, tz = cmds.xform(obj1, q=True, t=True)
+        _, _, tz2 = cmds.xform(obj2, q=True, t=True)
+        cmds.xform(obj1, t=newTr+[tz], ws=True)
+        cmds.xform(obj2, t=newTr2+[tz2], ws=True)
+
+        if frame_id == 1 and self.group_check:
+
+            # self.grouping()
+            self.parenting()
+            self.keying()
+
+        elif frame_id >= 1:
+            # ls = cmds.listRelatives(self.group)
+            # try:
+            #     if obj1 not in ls:
+            #         cmds.parent(obj1, self.group)
+
+            #     if obj2 not in ls:
+            #         cmds.parent(obj2, self.group)
+            # except:
+            #     pass
+            self.parenting()
+            self.keying(frame_id)
+
+        if not self.static:
+            self.write({"success": True})
+
+    def keying(self, frame_id=0):
+        for obj in self.keyables.values():
+            cmds.setKeyframe(obj, at="translate", t=frame_id+1)
+
+    def grouping(self):
+        # self.group = cmds.group(*self.keyables.values(), n="skel")
+        # cmds.xform(self.group, cp=1)
+        # cmds.xform(self.group, ro=(0,0,180))
+        # self.group_check = False
+
+        self.group = cmds.group(self.keyables[1], n="skel")
+        cmds.xform(self.group, cp=1)
+        cmds.xform(self.group, ro=(0, 0, 180))
+        self.group_check = False
+
+    def parenting(self):
+        for p1, p2 in self.pairs:
+            try:
+                top = self.keyables[p1]
+                bottom = self.keyables[p2]
+            except KeyError:
+                continue
+
+            ls = cmds.listRelatives(top)
+
+            if not ls:
+                cmds.parent(bottom, top)
+            elif bottom not in ls:
+                cmds.parent(bottom, top)
+
+    def get_obj(self, p_id):
+        if not self.keyables.get(p_id, None):
+            obj = self.create_obj()
+            obj = cmds.rename(obj, "{0}_pi_{1}".format(obj, p_id))
+            self.keyables[p_id] = obj
+            return obj
         else:
-            print(client.ping())
+            return self.keyables[p_id]
 
-        if client.disconnect():
-            print("[LOG] Disconnected.")
-    else:
-        print("[ERROR] Failed to connect")
+    def create_obj(self):
+        # return cmds.polySphere()[0]
+        jnt = cmds.joint()
+        # -important to deselect as else the joints will parent the last selected object and mess up positioning
+        cmds.select(cl=True)
+        return jnt
+
+
+class VideoPose3DMayaServer(pyhelper.ServerBase):
+    """
+    Get VideoPose3D at https://github.com/facebookresearch/VideoPose3D.git 
+
+    Start the server in maya like this:
+    if __name__ == "__main__":
+        import mahelper
+        import pyhelper
+
+        try:
+            server.deleteLater()
+        except:
+            pass
+
+        cmds.evalDeferred("server = mahelper.VideoPose3DMayaServer(parent=mahelper.getMayaWin(),mult=1)")
+    """
+
+    def __init__(self, parent=None, mult=5, static=None, default_obj="joint"):
+        if not static:
+            super(VideoPose3DMayaServer, self).__init__(parent)
+
+        self.keyables = dict()
+        self.group = None
+        self.mult = mult
+        self.static = static
+        self.pairs = VideoPosePairs
+        self.names = VideoPoseNames
+        self.default_obj = default_obj
+        self.objs = []
+
+    def process_data(self, data):
+        self.prep()
+        self.objs = [self.create_obj() for _ in range(17)]
+        positions, rots = data
+
+        self.set_positions(positions)
+        for n, obj in enumerate(self.objs):
+            if rots[n] is not None:
+                self.set_rotations(obj, rots[n])
+
+        self.parenting()
+        self.grouping()
+        self.renaming()
+
+        self.success()
+
+    def process_raw(self, data):
+        mult = self.mult
+        for f, data_1 in enumerate(data):
+            for n, data_2 in enumerate(data_1):
+                obj = self.get_obj(n)
+                self.objs.append(obj)
+                mult_data = [i*mult for i in data_2]
+                cmds.xform(obj, t=mult_data, ws=True)
+
+            if f == 0 and self.default_obj == "joint":
+                self.parenting()
+            self.keying(f)
+
+        self.grouping()
+        self.renaming()
+
+        self.success()
+
+    def set_rotations(self, obj, rots_split):
+        rots_len = len(rots_split[0])
+        set_attribute_keyframes(rots_split, rots_len, obj)
+
+    def set_positions(self, positions):
+        for i in range(17):
+            cmds.xform(self.objs[i], t=positions[i], ws=True)
+
+    def keying(self, frame_id=0):
+        for obj in self.keyables.values():
+            cmds.setKeyframe(obj, at="translate", t=frame_id+1)
+
+    def grouping(self):
+        if self.default_obj == "joint":
+            # -objs[0] bcuz joints
+            self.group = cmds.group(self.objs[0], n="skel")
+        else:
+            self.group = cmds.group(*self.objs, n="skel")
+
+        cmds.xform(self.group, cp=1)
+        cmds.xform(self.group, ro=(0, 0, 180))
+
+    def parenting(self):
+        for p1, p2 in self.pairs:
+            top = self.objs[p1]
+            bottom = self.objs[p2]
+
+            ls = cmds.listRelatives(top)
+
+            if not ls:
+                cmds.parent(bottom, top)
+            elif bottom not in ls:
+                cmds.parent(bottom, top)
+
+    def renaming(self):
+        for k, v in self.names.items():
+            obj = self.objs[k]
+            ret = cmds.rename(obj, v)
+            self.objs[k] = ret
+
+    def get_obj(self, p_id):
+        if not self.keyables.get(p_id, None):
+            obj = self.create_obj()
+            obj = cmds.rename(obj, "{0}_pi_{1}".format(obj, p_id))
+            self.keyables[p_id] = obj
+            return obj
+        return self.keyables[p_id]
+
+    def create_obj(self):
+        obj = getattr(cmds, self.default_obj)()
+
+        if not isinstance(obj, basestring if sys.version[0] != 2 else str):
+            obj = obj[0]
+
+        # -important to deselect as else the joints will parent the last selected object and mess up positioning
+        cmds.select(cl=True)
+        return obj
+
+    def prep(self):
+        cmds.select(cl=True)
+        cmds.currentTime(1)
+
+    def success(self):
+        if not self.static:
+            self.write({"success": True})
+
+        print(
+            "[LOG] Successfully finished processing.\nCreated {0}.".format(self.group))
 
 
 # --------------------- Private Helper Functions ---------------------- #
@@ -260,6 +512,65 @@ def getMayaWin():
     return window
 
 
+def get_basename(fullpath):
+    try:
+        return fullpath.rsplit("|", 1)[1]
+    except IndexError:
+        print("[LOG] Not a valid path, return given.")
+        return fullpath
+
+
+def set_keyframes(plugname, times, values, animtype=0):
+    """
+    Convinient api wrapper to set multiple keyframes.
+
+    Args:
+        plugname ([type]): [description]
+        times ([type]): [description]
+        values ([type]): [description]
+        animtype (int, optional): [description]. Defaults to 0.
+    """
+    plug = api2.MSelectionList().add(plugname).getPlug(0)
+
+    try:
+        mobj = api2a.MFnAnimCurve().create(plug, animtype)
+        animfn = api2a.MFnAnimCurve(mobj)
+    except TypeError:
+        animfn = api2a.MFnAnimCurve(plug)
+
+    animfn.addKeys(times, pyhelper.flatten(values))
+
+
+def set_cutKeys(obj, at="translate"):
+    cmds.cutKey(obj, attribute=at)
+
+
+def set_timeline(obj):
+    times = cmds.keyframe(obj, query=True)
+    try:
+        time = times[0]
+        cmds.currentTime(time)
+    except ValueError:
+        print("[ERROR] Object has no keyframes.")
+
+
+def set_attribute_keyframes(values, max_range, obj, attr="rotate", animtype=0):
+    """
+    Convinient function to set multiple keys on a whole attribute.
+    Wraps 'set_keyframes'.
+
+    Args:
+        values ([List]): [description]
+        max_range ([Int]): [description]
+        obj ([String]): [description]
+        attr (str, optional): [description]. Defaults to "rotate".
+    """
+
+    names = ["{0}.{1}{2}".format(obj, attr, c) for c in "XYZ"]
+    for n, name in enumerate(names):
+        set_keyframes(name, range(max_range), values[n], animtype)
+
+
 def prefix_name(name, prefix):
     """
     Prefix a name of a given node, checks if a namespace is contained and preserves it.
@@ -311,8 +622,11 @@ def get_imgPath():
     return cmds.fileDialog2(ff=multFilter, fm=1, cap="Import Image")
 
 
-def get_filePath():
-    return cmds.fileDialog2(ff="*.obj", fm=1)
+def get_filePath(**kwargs):
+    kwargs["fm"] = 1
+    if not kwargs.get("ff", None):
+        kwargs["ff"] = "*"
+    return cmds.fileDialog2(**kwargs)
 
 
 # ---------------- Context Managers and Decorators -------------------- #
@@ -346,8 +660,3 @@ def reload_plugin(plugin_name, unload=False):
         cmds.evalDeferred("cmds.loadPlugin('{0}')".format(plugin_name))
     else:
         cmds.evalDeferred("cmds.unloadPlugin('{0}')".format(plugin_name))
-
-
-if __name__ == "__main__":
-
-    start_maya_client()

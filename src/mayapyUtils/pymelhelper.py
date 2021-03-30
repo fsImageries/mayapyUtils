@@ -18,26 +18,26 @@ def create_loc_on_pivot(selection=None, nameScheme=None):
         selection = pmc.selected()
 
     assert selection, "Nothing selected."
-    
+
     with pmc.UndoChunk():
         for node in selection:
             if node.type() != "transform":
                 try:
                     par = pmc.listRelatives(node, ap=True)[0]
-            
+
                     if par in selection:
                         continue
                     node = par
                 except Exception:
                     continue
-                    
+
             name = node.name()
             if nameScheme:
                 name = nameScheme(name)
             else:
                 name = "{0}_loc".format(name)
-                
+
             pos = node.getPivots(worldSpace=True)[0]
             loc = pmc.spaceLocator(n=name)
-            
+
             pmc.move(loc, pos)

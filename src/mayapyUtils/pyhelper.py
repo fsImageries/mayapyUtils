@@ -1,5 +1,3 @@
-# pylint: disable=bare-except
-
 from string import digits
 from os.path import split, splitext    # TODO fix os import
 from time import time, sleep
@@ -128,6 +126,16 @@ def flatten(src_list):
     return [src_list]
 
 
+def join_recursive(p1, ps):
+    try:
+        pnew = ps[0]
+        p1new = os.path.join(p1, pnew)
+        ps.pop(0)
+        return join_recursive(p1new, ps)
+    except IndexError:
+        return p1
+
+
 # ------------------------ Context Managers --------------------------- #
 # --------------------------------------------------------------------- #
 
@@ -136,7 +144,7 @@ class FunctionTimer(object):
         self.start_time = time()
 
     def __exit__(self, *_):
-        print "My program took", time() - self.start_time, "to run"
+        print("My program took", time() - self.start_time, "to run")
 
 
 @contextmanager
@@ -229,8 +237,7 @@ class ServerBase(QtCore.QObject):
 
                     data = json.loads(json_data)
 
-                    # -DEBUG
-                    self.write({"success": True})
+                    self.process_data(data)
 
                     json_data = ""
 
@@ -253,6 +260,10 @@ class ServerBase(QtCore.QObject):
         }
         self.write(reply)
 
+    def process_data(self, data):
+        print(data)
+        self.write({"success": True})
+
 
 class ClientBase(object):
 
@@ -273,7 +284,6 @@ class ClientBase(object):
             self.client_socket = socket.socket(
                 socket.AF_INET, socket.SOCK_STREAM)
             self.client_socket.connect((HOST, self.port))
-            self.client_socket.setblocking(0)
         except:
             traceback.print_exc()
             return False
@@ -289,8 +299,8 @@ class ClientBase(object):
 
         return True
 
-    def send(self, data):
-        json_data = json.dumps(data)
+    def send(self, data, json_cls=None):
+        json_data = json.dumps(data, cls=json_cls)
 
         message = list()
         message.append("{0:10d}".format(len(json_data.encode())))
@@ -303,8 +313,6 @@ class ClientBase(object):
             traceback.print_exc()
             return None
 
-        return self.recv()
-
     def recv(self):
         total_data = list()
         data = ""
@@ -315,7 +323,8 @@ class ClientBase(object):
         while time() - start_time < self.timeout:
             try:
                 data = self.client_socket.recv(bytes_remaining)
-            except:
+            except Exception as e:
+                print("Exception: {}".format(e))
                 sleep(0.01)
                 continue
 
