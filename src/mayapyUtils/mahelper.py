@@ -1,18 +1,19 @@
+import maya.api.OpenMayaAnim as api2a
+import maya.api.OpenMaya as api2
 import maya.OpenMayaUI as apiUI
 import maya.cmds as cmds
-import maya.api.OpenMaya as api2
-import maya.api.OpenMayaAnim as api2a
 
-from contextlib import contextmanager
+
 from shiboken2 import wrapInstance, getCppPointer
 from PySide2 import QtWidgets, QtCore
+from contextlib import contextmanager
+from maya import mel
 
 import pyhelper
-
 import sys
 
 
-# ------------------------ Static Information ------------------------- #
+# ----------------------- aimocap Information ------------------------- #
 # --------------------------------------------------------------------- #
 
 
@@ -36,6 +37,74 @@ VideoPoseNames = {0: "Hip", 1: "rThigh", 2: "rShin", 3: "rFoot",
                   14: "rShoulder", 15: "rElbow", 16: "rHand"}
 
 VideoPoseNamesRev = {v: k for k, v in VideoPoseNames.items()}
+
+commands = ["""
+import json
+from mayapyUtils import mahelper
+
+json_file = mahelper.get_filePath(ff="*.json", cap="Open .json file.")
+if json_file:
+    with open(json_file[0]) as json_data:
+        data = json.load(json_data)
+
+    mahelper.VideoPose3DMayaServer(parent=mahelper.getMayaWin(),mult=1,static=True).process_data(data)
+""", """
+from mayapyUtils import mahelper
+
+try:
+    server.deleteLater()
+except:
+    pass
+    
+cmds.evalDeferred("server = mahelper.VideoPose3DMayaServer(parent=mahelper.getMayaWin(),mult=1)")
+"""]
+
+SHELF_NAME = "Custom"
+SHELF_TOOL = {
+    "label": ["aiSkel", "aiServer"],
+    "command": commands,
+    "annotation": ["Import VideoPose3D json skelet.",
+                   "Activate server-side of the maya skeleton creation, listens for incoming data and disconnects after processing."],
+    "image1": "pythonFamily.png",
+    "sourceType": "python",
+    "imageOverlayLabel": ["aiSkel", "aiServer"]
+}
+
+
+def create_shelf(nth=2):
+    for i in range(nth):
+        shelf_tool = {}
+        for k, v in SHELF_TOOL.items():
+            shelf_tool[k] = v if isinstance(v, str) else v[i]
+        try:
+            _set_shelfBTN(shelf_tool)
+        except Exception as err:
+            print("[ERROR] An error occured: {0}".format(err))
+
+
+def _set_shelfBTN(shelf_tool):
+    # get top shelf
+    gShelfTopLevel = mel.eval("$tmpVar=$gShelfTopLevel")
+    # get top shelf names
+    shelves = cmds.tabLayout(gShelfTopLevel, query=1, ca=1)
+    # create shelf
+    if SHELF_NAME not in shelves:
+        cmds.shelfLayout(SHELF_NAME, parent=gShelfTopLevel)
+    # delete existing button
+    _remove_shelfBTN(shelf_tool)
+    # add button
+    cmds.shelfButton(style="iconOnly", parent=SHELF_NAME, **shelf_tool)
+
+
+def _remove_shelfBTN(shelf_tool):
+    # get existing members
+    names = cmds.shelfLayout(SHELF_NAME, query=True, childArray=True) or []
+    labels = [cmds.shelfButton(n, query=True, label=True) for n in names]
+
+    # delete existing button
+    if shelf_tool.get("label") in labels:
+        index = labels.index(shelf_tool.get("label"))
+        cmds.deleteUI(names[index])
 
 
 # --------------------- Workspace Control Setups ---------------------- #

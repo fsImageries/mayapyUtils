@@ -1,11 +1,11 @@
 from maya.api import OpenMaya as api2
-from maya import cmds
 from functools import partial
+from maya import cmds
 
-import re
+import customTypes
 import mahelper
 import pyhelper
-import customTypes
+import re
 
 
 # ------------------------ Static Information ------------------------- #
