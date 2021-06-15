@@ -1,4 +1,7 @@
 *.pyc
+*.mb
+*.ma
+__pycache__
 .vscode
 build
 dist

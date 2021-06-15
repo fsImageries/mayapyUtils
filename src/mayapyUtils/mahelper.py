@@ -7,10 +7,13 @@ import maya.cmds as cmds
 from shiboken2 import wrapInstance, getCppPointer
 from PySide2 import QtWidgets, QtCore
 from contextlib import contextmanager
+from pyside2uic import compileUi
 from maya import mel
+
 
 import pyhelper
 import sys
+import os
 
 
 # ----------------------- aimocap Information ------------------------- #
@@ -39,25 +42,25 @@ VideoPoseNames = {0: "Hip", 1: "rThigh", 2: "rShin", 3: "rFoot",
 VideoPoseNamesRev = {v: k for k, v in VideoPoseNames.items()}
 
 commands = ["""
-import json
-from mayapyUtils import mahelper
+    import json
+    from mayapyUtils import mahelper
 
-json_file = mahelper.get_filePath(ff="*.json", cap="Open .json file.")
-if json_file:
-    with open(json_file[0]) as json_data:
-        data = json.load(json_data)
+    json_file = mahelper.get_filePath(ff="*.json", cap="Open .json file.")
+    if json_file:
+        with open(json_file[0]) as json_data:
+            data = json.load(json_data)
 
-    mahelper.VideoPose3DMayaServer(parent=mahelper.getMayaWin(),mult=1,static=True).process_data(data)
-""", """
-from mayapyUtils import mahelper
+        mahelper.VideoPose3DMayaServer(parent=mahelper.getMayaWin(),mult=1,static=True).process_data(data)
+    """, """
+    from mayapyUtils import mahelper
 
-try:
-    server.deleteLater()
-except:
-    pass
-    
-cmds.evalDeferred("server = mahelper.VideoPose3DMayaServer(parent=mahelper.getMayaWin(),mult=1)")
-"""]
+    try:
+        server.deleteLater()
+    except:
+        pass
+        
+    cmds.evalDeferred("server = mahelper.VideoPose3DMayaServer(parent=mahelper.getMayaWin(),mult=1)")
+    """]
 
 SHELF_NAME = "Custom"
 SHELF_TOOL = {
@@ -729,3 +732,25 @@ def reload_plugin(plugin_name, unload=False):
         cmds.evalDeferred("cmds.loadPlugin('{0}')".format(plugin_name))
     else:
         cmds.evalDeferred("cmds.unloadPlugin('{0}')".format(plugin_name))
+
+
+# -------------------------------- Pyside2uic ------------------------- #
+# --------------------------------------------------------------------- #
+
+
+def convertUi(uipath, outpath=None, outname=None):
+    if not outpath:
+        outpath = os.path.dirname(uipath)
+
+    if not outname:
+        outname = os.path.basename(uipath).rsplit(".", 1)[0]
+        outname = "{0}.py".format(outname)
+
+    with open(os.path.join(outpath, outname), "w") as pyfile:
+        compileUi(uipath, pyfile, False, 4, False)
+
+
+if __name__ == "__main__":
+    # start uiconvert
+    uipath = sys.argv[1]
+    convertUi(uipath)

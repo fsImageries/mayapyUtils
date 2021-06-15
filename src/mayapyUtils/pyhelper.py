@@ -126,6 +126,29 @@ def flatten(src_list):
     return [src_list]
 
 
+def listsplit_gap(li):
+    """
+    Split a list by the numeric gap between it's elements. Only works on interger lists.
+
+    Args:
+        li ([List]): List which should be splited.
+
+    Returns:
+        [List]: Splited list.
+    """
+    # Determine where the gaps are occurring 
+    gap_loc = [idx  + 1  
+               for (idx, el), next_el in zip(enumerate(li[:-1]), li[1:])
+               if (next_el - el) > 1]   
+    # Adding beginning and end of the list    
+    gap_loc.insert(0, 0)
+    gap_loc.append(len(li))
+    # Create sublists where gaps occurs
+    list_seq = [li[prev_gap:gap] for prev_gap, gap in zip(gap_loc[:-1],gap_loc[1:])]
+    
+    return list_seq
+
+
 def join_recursive(p1, ps):
     try:
         pnew = ps[0]
@@ -136,8 +159,10 @@ def join_recursive(p1, ps):
         return p1
 
 
+
 # ------------------------ Context Managers --------------------------- #
 # --------------------------------------------------------------------- #
+
 
 class FunctionTimer(object):
     def __enter__(self):
