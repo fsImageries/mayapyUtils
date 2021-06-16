@@ -22,6 +22,11 @@ class NumpyEncoder(json.JSONEncoder):
         return json.JSONEncoder.default(self, obj)
 
 
+def np2json(arr, outpath):
+    with open(outpath, 'w', encoding='utf-8') as f:
+        json.dump(arr, f, ensure_ascii=False, indent=4, cls=NumpyEncoder)
+
+
 def _get_first_search(path, ext=".npz"):
     for dirpath, _, filenames in os.walk(path):
         for filename in [f for f in filenames if f.endswith(ext)]:
