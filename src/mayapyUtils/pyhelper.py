@@ -1,8 +1,9 @@
 from string import digits
-from os.path import split, splitext    # TODO fix os import
 from time import time
 
 import os
+import sys
+import static
 
 
 try:
@@ -35,8 +36,8 @@ def basename_plus(filepath):
     """ Get every property of a filename as item """
 
     # Split of standard properties.
-    basedir, filename = split(filepath)
-    name_noext, ext = splitext(filename)
+    basedir, filename = os.path.split(filepath)
+    name_noext, ext = os.path.splitext(filename)
 
     # Split of Digits at the end of string. Useful for a name of a sequence i.e. Image Sequence.
     digitsChars = digits.encode()
@@ -157,3 +158,40 @@ class FunctionTimer(object):
 
     def __exit__(self, *_):
         print("My program took", time() - self.start_time, "to run")
+
+
+# -------------------------- Maya Scripts ----------------------------- #
+# --------------------------------------------------------------------- #
+
+
+def folder_creator(path, folders, post=None):
+    for f in folders:
+        dirs = f.split("/")
+        add = ""
+        for d in dirs:
+            add = os.path.join(add, d)
+            dpath = os.path.join(path, add)
+
+            try:
+                os.mkdir(dpath)
+            except FileExistsError:
+                continue
+
+    if post:
+        post(path)
+
+
+def workspace_mel(path):
+    """
+    Create a 'workspace.mel' at the given path.
+
+    Args:
+        path ([Str]): Path to the project folder where the workspace.mel should be placed.
+    """
+    with open(os.path.join(path, "workspace.mel"), "w") as f:
+        f.write(static.workspace_definition.strip())
+
+
+if __name__ == "__main__":
+    path = sys.argv[1]
+    folder_creator(path, static.project_folders, post=workspace_mel)

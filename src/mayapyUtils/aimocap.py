@@ -2,14 +2,10 @@ import numpy as np
 import argparse
 import pyhelper
 import pathlib
+import static
 import json
 import os
 
-
-VideoPoseChains = [[0, 1, 2, 3], [0, 4, 5, 6], [
-    7, 8, 9, 10], [11, 12, 13], [14, 15, 16]]
-
-Skips = [0, 7, 11, 14]
 
 # ------------------------------ Helpers ------------------------------ #
 # --------------------------------------------------------------------- #
@@ -259,7 +255,7 @@ def go_over_chain(data):
         rotations = trans2rot(base_pos, bases, joints, max_range)
         added_rots = add_rotations(rotations, max_range)
 
-        if i not in Skips:
+        if i not in static.Skips:
             added_rots = sub_parent_rotation(
                 last_rots, i, added_rots, max_range)
 

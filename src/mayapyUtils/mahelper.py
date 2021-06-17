@@ -12,100 +12,43 @@ from maya import mel
 
 
 import pyhelper
+import static
 import sys
 import os
 
 
-# ----------------------- aimocap Information ------------------------- #
+# --------------------------- Shelf Tools ----------------------------- #
 # --------------------------------------------------------------------- #
 
 
-HOST = "localhost"
-PORT = 6550
-HEADER_SIZE = 10
-
-CocoPairs = [
-    (1, 2), (1, 5), (2, 3), (3, 4), (5, 6), (6,
-                                             7), (1, 8), (8, 9), (9, 10), (1, 11),
-    (11, 12), (12, 13), (1, 0), (0, 14), (14,
-                                          16), (0, 15), (15, 17), (2, 16), (5, 17)
-]
-
-VideoPosePairs = [[0, 4], [4, 5], [5, 6],
-                  [0, 1], [1, 2], [2, 3],
-                  [0, 7], [7, 8], [8, 9], [9, 10],
-                  [8, 11], [11, 12], [12, 13],
-                  [8, 14], [14, 15], [15, 16]]
-
-VideoPoseNames = {0: "Hip", 1: "rThigh", 2: "rShin", 3: "rFoot",
-                  4: "lThigh", 5: "lShin", 6: "lFoot",
-                  7: "upperSpine", 8: "lowerSpine", 9: "Neck", 10: "Head",
-                  11: "lShoulder", 12: "lElbow", 13: "lHand",
-                  14: "rShoulder", 15: "rElbow", 16: "rHand"}
-
-VideoPoseNamesRev = {v: k for k, v in VideoPoseNames.items()}
-
-commands = ["""
-    import json
-    from mayapyUtils import mahelper
-
-    json_file = mahelper.get_filePath(ff="*.json", cap="Open .json file.")
-    if json_file:
-        with open(json_file[0]) as json_data:
-            data = json.load(json_data)
-
-        mahelper.VideoPose3DMayaServer(parent=mahelper.getMayaWin(),mult=1,static=True).process_data(data)
-    """, """
-    from mayapyUtils import mahelper
-
-    try:
-        server.deleteLater()
-    except:
-        pass
-        
-    cmds.evalDeferred("server = mahelper.VideoPose3DMayaServer(parent=mahelper.getMayaWin(),mult=1)")
-    """]
-
-SHELF_NAME = "Custom"
-SHELF_TOOL = {
-    "label": ["aiSkel", "aiServer"],
-    "command": commands,
-    "annotation": ["Import VideoPose3D json skelet.",
-                   "Activate server-side of the maya skeleton creation, listens for incoming data and disconnects after processing."],
-    "image1": "pythonFamily.png",
-    "sourceType": "python",
-    "imageOverlayLabel": ["aiSkel", "aiServer"]
-}
-
-
-def create_shelf(nth=2):
+def create_shelfs(nth=2, tool=static.aimocap_shelftool, name=static.aimocap_shelfname):
     for i in range(nth):
         shelf_tool = {}
-        for k, v in SHELF_TOOL.items():
+        for k, v in tool.items():
             shelf_tool[k] = v if isinstance(v, str) else v[i]
         try:
-            _set_shelfBTN(shelf_tool)
+            _set_shelfBTN(shelf_tool, name)
         except Exception as err:
             print("[ERROR] An error occured: {0}".format(err))
 
 
-def _set_shelfBTN(shelf_tool):
+def _set_shelfBTN(shelf_tool, shelf_name):
     # get top shelf
     gShelfTopLevel = mel.eval("$tmpVar=$gShelfTopLevel")
     # get top shelf names
     shelves = cmds.tabLayout(gShelfTopLevel, query=1, ca=1)
     # create shelf
-    if SHELF_NAME not in shelves:
-        cmds.shelfLayout(SHELF_NAME, parent=gShelfTopLevel)
+    if shelf_name not in shelves:
+        cmds.shelfLayout(shelf_name, parent=gShelfTopLevel)
     # delete existing button
-    _remove_shelfBTN(shelf_tool)
+    _remove_shelfBTN(shelf_tool, shelf_name)
     # add button
-    cmds.shelfButton(style="iconOnly", parent=SHELF_NAME, **shelf_tool)
+    cmds.shelfButton(style="iconOnly", parent=shelf_name, **shelf_tool)
 
 
-def _remove_shelfBTN(shelf_tool):
+def _remove_shelfBTN(shelf_tool, shelf_name):
     # get existing members
-    names = cmds.shelfLayout(SHELF_NAME, query=True, childArray=True) or []
+    names = cmds.shelfLayout(shelf_name, query=True, childArray=True) or []
     labels = [cmds.shelfButton(n, query=True, label=True) for n in names]
 
     # delete existing button
@@ -270,8 +213,8 @@ class WorkspaceControl(object):
 
 class ServerBase(QtCore.QObject):
 
-    PORT = PORT
-    HEADER_SIZE = HEADER_SIZE
+    PORT = static.PORT
+    HEADER_SIZE = static.HEADER_SIZE
 
     def __init__(self, parent):
         super(ServerBase, self).__init__(parent)
@@ -368,8 +311,8 @@ class ServerBase(QtCore.QObject):
 
 class ClientBase(object):
 
-    PORT = PORT
-    HEADER_SIZE = HEADER_SIZE
+    PORT = static.PORT
+    HEADER_SIZE = static.HEADER_SIZE
 
     def __init__(self, timeout=2):
         self.timeout = timeout
@@ -384,7 +327,7 @@ class ClientBase(object):
         try:
             self.client_socket = socket.socket(
                 socket.AF_INET, socket.SOCK_STREAM)
-            self.client_socket.connect((HOST, self.port))
+            self.client_socket.connect((static.HOST, self.port))
         except:
             traceback.print_exc()
             return False
@@ -498,7 +441,7 @@ class O_NectMayaServer(ServerBase):
         self.group_check = True
         self.mult = mult
         self.static = static
-        self.pairs = CocoPairs
+        self.pairs = static.CocoPairs
 
     def process_data(self, data):
 
@@ -614,8 +557,8 @@ class VideoPose3DMayaServer(ServerBase):
         self.group = None
         self.mult = mult
         self.static = static
-        self.pairs = VideoPosePairs
-        self.names = VideoPoseNames
+        self.pairs = static.VideoPosePairs
+        self.names = static.VideoPoseNames
         self.default_obj = default_obj
         self.objs = []
 
