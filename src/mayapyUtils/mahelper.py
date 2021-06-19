@@ -850,6 +850,13 @@ def get_filePath(**kwargs):
     return cmds.fileDialog2(**kwargs)
 
 
+def save_filePath(**kwargs):
+    kwargs["fm"] = 0
+    if not kwargs.get("ff", None):
+        kwargs["ff"] = "*"
+    return cmds.fileDialog2(**kwargs)
+
+
 # ---------------- Context Managers and Decorators -------------------- #
 # --------------------------------------------------------------------- #
 
