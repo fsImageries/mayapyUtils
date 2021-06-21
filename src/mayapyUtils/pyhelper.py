@@ -160,11 +160,16 @@ class FunctionTimer(object):
         print("My program took", time() - self.start_time, "to run")
 
 
-# -------------------------- Maya Scripts ----------------------------- #
+# ---------------------------- Scripts -------------------------------- #
 # --------------------------------------------------------------------- #
 
 
-def folder_creator(path, folders, post=None):
+def folder_creator(path, name, folders, post=None):
+    print(path)
+    print(name)
+    path = os.path.join(path, name)
+    os.mkdir(path)
+
     for f in folders:
         dirs = f.split("/")
         add = ""
@@ -194,4 +199,5 @@ def workspace_mel(path):
 
 if __name__ == "__main__":
     path = sys.argv[1]
-    folder_creator(path, static.project_folders, post=workspace_mel)
+    name = sys.argv[2]
+    folder_creator(path, name, static.project_folders, post=workspace_mel)

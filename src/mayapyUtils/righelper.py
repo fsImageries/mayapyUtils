@@ -3,6 +3,7 @@ import math
 import json
 import mahelper
 import pyhelper
+# TODO change list comprehensions to pass pure lists into commands as they are designed that way :/
 
 
 # ---------------------------- Helpers -------------------------------- #
@@ -499,6 +500,109 @@ def remove_loc_transformer(loc):
     for i in adds+[mult, loc]:
         cmds.delete(i)
 
+
+def export_ma_cam(cam_og=None, save=True, mult=None, locs=True):
+    """
+    Export a selected or given camera to something After Effects can understand.
+    We first copy the camera at the start position, without keys or inputs.
+    Then we constraint the original camera to the duplicate.
+    We bake out the positions and save the selection to new .ma file.
+
+    On the way we can multiply the values to scale the camera for AE.
+    We can also generate locators on the path of the camera and export those as nulls.
+
+    Args:
+        cam_og ([Str], optional): The name of the camera node. Use selection when not supplied. Defaults to None.
+        save ([Bool], optional): Export the created nodes, deletes the exported nodes when true. Defaults to True.
+        mult ([Int], optional): The values by which the camera values gets multiplied. Defaults to None.
+        locs ([Bool], optional): Generate and export locators on the camera path if true. Defaults to True.
+    """
+
+    if not cam_og:
+        cam_og = cmds.ls(sl=True, l=True)
+
+    keytimes = cmds.keyframe(cam_og, q=True)
+    start, end = min(keytimes), max(keytimes)
+
+    cam_dup = cmds.duplicate(cam_og)
+
+    if str(cmds.ls(cam_dup, l=True)).count("|") >= 2:
+        cam_dup = cmds.parent(cam_dup, world=True)
+
+    constraint = cmds.parentConstraint(cam_og, cam_dup)
+    cmds.bakeResults(cam_dup, simulation=True, t=(start, end))
+    cmds.delete(constraint)
+
+    anims = unchanging_animCurves(
+        cam_dup+cmds.listRelatives(cam_dup, shapes=True))
+    for nd, _ in anims:
+        cmds.delete(nd)
+
+    if mult:
+        mult_keyframes(cam_dup, mult=mult)
+
+    if locs:
+        locs = loc_over_time(cam_dup[0])
+        cmds.select(cam_dup+locs)
+
+    if save:
+        outpath = mahelper.save_filePath(ff="*.ma")
+        if outpath:
+            cmds.file(outpath, force=True, options="v=0",
+                      typ="mayaAscii", es=True)
+            dels = cam_dup+locs if locs else cam_dup
+            cmds.delete(dels)
+
+
+def mult_keyframes(nodes, mult=100):
+    """
+    Multiply all keyframes by the given value.
+
+    Args:
+        nodes ([Str,List]): Name of the nodes on which to work, also works with list of names.
+        mult ([Int], optional): The multiplication value. Defaults to 100.
+    """
+    anims = cmds.keyframe(nodes, q=True, n=True)
+    keys = cmds.keyframe(nodes, q=True, vc=True, tc=True)
+    frac = len(keys)/len(anims)
+
+    keys = [keys[frac*i:frac*(i+1)] for i in range(len(anims))]
+    keys = [[k[i:i+2] for i in range(len(k)) if i % 2 == 0] for k in keys]
+
+    for nd, data in zip(anims, keys):
+
+        for vals in data:
+            time, val = vals
+            val *= mult
+
+            cmds.setKeyframe(nd, v=val, t=time)
+
+
+def loc_over_time(node):
+    """
+    Generate a locator at the start, mid and end position of the given node in it's keyrange.
+
+    Args:
+        node ([Str]): Name of the node on which to work.
+
+    Returns:
+        [List]: Names of the generated locators.
+    """
+
+    keys = cmds.keyframe(node, q=True)
+    indices = min(keys), max(keys)/2, max(keys)
+
+    pos = [pyhelper.flatten(cmds.getAttr(
+        "{0}.translate".format(node), t=idx)) for idx in indices]
+    pos = [[0, 0, 0]] + pos  # add Zero-origin as locator
+
+    def name(x): return "NULL_{0}".format(x)
+
+    locs = pyhelper.flatten([cmds.spaceLocator(n=name(n))
+                            for n in range(len(pos))])
+    [cmds.xform(loc, t=p) for loc, p in zip(locs, pos)]
+
+    return locs
 
 # ---------------------------- Keyframes ------------------------------ #
 # --------------------------------------------------------------------- #
