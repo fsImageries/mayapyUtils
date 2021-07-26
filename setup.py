@@ -35,6 +35,10 @@ package = "mayapyUtils"
 here = os.path.abspath(os.path.dirname(__file__))  
 packages = ['mayapyUtils']
 long_description = read("README.md")
+requires = [
+    "pyUtils @ https://github.com/fsImageries/pyUtils/tarball/main#egg=pyUtils-0.1.0"]
+    
+
 
 
 attrs = {"name":package,
@@ -43,7 +47,8 @@ attrs = {"name":package,
          "author_email":"imageries@mail.de",
          "package_dir":{"": "src"},
          "packages":find_packages(where="src") if find_packages else packages,
-         "license":"MIT",
+         "license": "GPL2",
+         "install_requires": requires,
          "description":"Maya-Python helper library.",
          "long_description":long_description,
          "keywords":"maya python mayapy utilities"}

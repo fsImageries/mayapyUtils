@@ -2,7 +2,9 @@ import maya.cmds as cmds
 import math
 import json
 import mahelper
-import pyhelper
+# import pyhelper
+from pyUtils import pyhelper
+import pose2maya
 # TODO change list comprehensions to pass pure lists into commands as they are designed that way :/
 
 
@@ -65,27 +67,29 @@ def import_videopose(path):
     with open(path, "r") as f:
         data = json.load(f)
 
-    pose = mahelper.VideoPose3DMayaServer(
-        parent=mahelper.getMayaWin(), mult=1, static=True)
+    pose2maya.VideoPose3DMayaServer.construct(data)
 
-    objs = [pose.create_obj() for _ in range(17)]
-    pose.objs = objs
+    # pose = mahelper.VideoPose3DMayaServer(
+    #     parent=mahelper.getMayaWin(), mult=1, static_cls=True)
 
-    pose.parenting()
+    # objs = [pose.create_obj() for _ in range(17)]
+    # pose.objs = objs
 
-    cmds.currentTime(1)
-    for _ in range(len(data)):
-        pose.set_positions(data[int(cmds.currentTime(q=True)-1)])
+    # pose.parenting()
 
-        for obj in pose.objs:
-            cmds.setKeyframe(obj, at="translate")
-            cmds.setKeyframe(obj, at="rotate")
+    # cmds.currentTime(1)
+    # for _ in range(len(data)):
+    #     pose.set_positions(data[int(cmds.currentTime(q=True)-1)])
 
-        cmds.currentTime(cmds.currentTime(q=True)+1)
-    cmds.currentTime(1)
+    #     for obj in pose.objs:
+    #         cmds.setKeyframe(obj, at="translate")
+    #         cmds.setKeyframe(obj, at="rotate")
 
-    pose.grouping()
-    return pose
+    #     cmds.currentTime(cmds.currentTime(q=True)+1)
+    # cmds.currentTime(1)
+
+    # pose.grouping()
+    # return pose
 
 
 # ------------------------- Rig 'T-Posing' ---------------------------- #

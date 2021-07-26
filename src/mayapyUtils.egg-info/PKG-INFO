@@ -1,11 +1,11 @@
 Metadata-Version: 1.0
 Name: mayapyUtils
-Version: 0.4.0
+Version: 0.4.2
 Summary: Maya-Python helper library.
 Home-page: UNKNOWN
 Author: Farooq Singh
 Author-email: imageries@mail.de
-License: MIT
+License: GPL2
 Description: # mayapyUtils
         A Python-based helper library to assist in repetetive tasks in Maya and Python.
         Includes helpers for the maya python api2, os filesystem and maya in general.
@@ -33,12 +33,11 @@ Description: # mayapyUtils
           - open the terminal, CMD on win
           
           - install from git:<br/>
-            (I was unable to succeed without the '--process-dependency-links' flag, if anybody got an idea please let me know.)
-            -`sudo path/to/mayapy -m pip install git+https://github.com/fsImageries/mayapyUtils.git --process-dependency-links`
+            -`sudo path/to/mayapy -m pip install git+https://github.com/fsImageries/mayapyUtils.git`
             <br/>or<br/>
           - download the git repo<br/>
               `cd into/repo`<br/>
-              `sudo path/to/mayapy -m pip install path/to/repo --process-dependency-links`<br/>
+              `sudo path/to/mayapy -m pip install path/to/repo`<br/>
           
           Third approach (copy files):<br/>
           

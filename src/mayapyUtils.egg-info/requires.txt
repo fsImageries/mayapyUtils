@@ -1,0 +1,1 @@
+pyUtils@ https://github.com/fsImageries/pyUtils/tarball/main#egg=pyUtils-0.1.0

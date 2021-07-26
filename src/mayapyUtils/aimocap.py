@@ -1,12 +1,17 @@
+from pprint import pprint
+import torch
 import numpy as np
+
 import argparse
 import pyhelper
 import pathlib
 import static
 import json
+import sys
 import os
 
 
+# DONT USE THIS, is going to be gone with the next update.
 # ------------------------------ Helpers ------------------------------ #
 # --------------------------------------------------------------------- #
 
@@ -31,8 +36,16 @@ def _get_first_search(path, ext=".npz"):
 
 def _parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("datapath", type=pathlib.Path,
-                        help="Path to .npz file or output dir.")
+    # parser.add_argument("datapath", type=pathlib.Path,
+    #                     help="Path to .npz file or output dir.")
+    parser.add_argument("-r", required=True, dest="repo", type=pathlib.Path,
+                        help="Path to the video-to-pose repo.")
+    parser.add_argument("-i", required=True, dest="input", type=pathlib.Path,
+                        help="Path to the video which should be infered.")
+    parser.add_argument("-out", "--viz_output", type=pathlib.Path,
+                        default=None, help="Path to which the output should be saved.")
+    parser.add_argument("-det", "--detector_2d", type=str, default="alpha_pose",
+                        help="Determine which 2d keypoint detector should be used.")
 
     group = parser.add_mutually_exclusive_group()
     group.add_argument("-sdm", "--send_maya", action="store_true",
@@ -62,208 +75,153 @@ def _array_radians(arr):
 array_radians = np.frompyfunc(_array_radians, 1, 1)
 
 
-# ---------------------------- Math Workers --------------------------- #
+def _pose_args(repo):
+    class arguments():
+        # placeholder for args
+        pass
+
+    args = arguments()
+
+    args.dataset = "h36m"
+    args.keypoints = "cpn_ft_h36m_dbb"
+    args.subjects_train = "S1,S5,S6,S7,S8"
+    args.subjects_test = "S9,S11"
+    args.subjects_unlabeled = ""
+    args.actions = "*"
+    args.evaluate = 'pretrained_h36m_detectron_coco.bin'
+    args.checkpoint = os.path.join(repo, "checkpoint")
+    args.checkpoint_frequency = 10
+    args.resume = ""
+    args.render = False
+    args.by_subject = False
+    args.export_training_curves = False
+    args.stride = 1
+    args.epochs = 60
+    args.batch_size = 60
+    args.dropout = 0.25
+    args.learning_rate = 0.001
+    args.lr_decay = 0.95
+    args.data_augmentation = True
+    args.test_time_augmentation = True
+    args.architecture = "3,3,3,3,3"
+    args.causal = False
+    args.channels = 1024
+    args.subset = 1
+    args.downsample = 1
+    args.warmup = 1
+    args.no_eval = False
+    args.dense = False
+    args.disable_optimizations = False
+    args.linear_projection = False
+    args.bone_length_term = True
+    args.no_proj = False
+    args.viz_subject = None
+    args.viz_action = None
+    args.viz_camera = 0
+    args.viz_video = None
+    args.viz_skip = 0
+    args.viz_output = None
+    args.viz_bitrate = 30000
+    args.viz_no_ground_truth = False
+    args.viz_limit = -1
+    args.viz_downsample = 1
+    args.viz_size = 5
+    args.input_npz = ""
+    args.input_video = ""
+
+    return args
+
+
+# ------------------------- Videopose Inference ----------------------- #
 # --------------------------------------------------------------------- #
 
 
-def get_rotation(base_p, jnt_p, parent_base_pos):
-    """
-    Get the rotation by calculating the angle between joints.
+def videpose_infer(args):
+    from common.camera import normalize_screen_coordinates, camera_to_world, image_coordinates
+    from common.generators import UnchunkedGenerator
+    from common.model import TemporalModel
+    from common.utils import Timer, evaluate, add_path
+    from videopose import get_detector_2d, ckpt_time, metadata, time0
 
-    Args:
-        base_p ([Array]): Array containing the position of the parent joint for frame nth and nth + 1.
-        jnt_p ([Array]): Array containing the position of the child joint for frame nth and nth + 1.
-        parent_base_pos ([Int]): First position of the whole animation, doesn't change over time.
+    import gene_npz
 
-    Returns:
-        [Array]: Array containing the Axis array and the calculated angle in degrees.
-    """
-    base = parent_base_pos
-    base1, base2 = base_p
+    gene_npz.args.outputpath = str(args.viz_output / "alpha_pose_kunkun_cut")
+    print(gene_npz.args)
+    # detector_2d = get_detector_2d(args.detector_2d)
+    detector_2d = gene_npz.generate_kpts(args.detector_2d)
 
-    p1, p2 = jnt_p
+    assert detector_2d, 'detector_2d should be in ({alpha, hr, open}_pose)'
 
-    prod1 = base - base2
-    prod2 = base - base1
-
-    v1 = base - (p1+prod2)
-    v2 = base - (p2+prod1)
-
-    length1 = np.sqrt(v1.dot(v1))
-    length2 = np.sqrt(v2.dot(v2))
-
-    if length1 == 0:
-        length1 = 1
-    if length2 == 0:
-        length2 = 1
-    base1_norm = v1 / length1
-    base2_norm = v2 / length2
-
-    p_cross = np.cross(v1, v2)
-    lengthC = np.sqrt(p_cross.dot(p_cross))
-
-    if lengthC != 0:
-        axis = p_cross / lengthC
+    # 2D kpts loads or generate
+    if not args.input_npz:
+        video_name = args.viz_video
+        keypoints = detector_2d(video_name)
     else:
-        axis = p_cross
+        npz = np.load(args.input_npz)
+        keypoints = npz['kpts']  # (N, 17, 2)
 
-    angle = np.arccos(base1_norm.dot(base2_norm))
+    keypoints_symmetry = metadata['keypoints_symmetry']
+    kps_left, kps_right = list(
+        keypoints_symmetry[0]), list(keypoints_symmetry[1])
+    joints_left, joints_right = list(
+        [4, 5, 6, 11, 12, 13]), list([1, 2, 3, 14, 15, 16])
 
-    return axis, np.rad2deg(angle)
+    # normlization keypoints  Suppose using the camera parameter
+    keypoints = normalize_screen_coordinates(
+        keypoints[..., :2], w=1000, h=1002)
 
+    model_pos = TemporalModel(17, 2, 17, filter_widths=[3, 3, 3, 3, 3], causal=args.causal, dropout=args.dropout, channels=args.channels,
+                              dense=args.dense)
 
-def trans2rot(base_pos, bases, joints, max_range):
-    """
-    Wrapper around 'get_rotation' for actual euler rotations after calculating the angles.
+    if torch.cuda.is_available():
+        model_pos = model_pos.cuda()
 
-    Args:
-        base_pos ([Int]): First position of the whole animation, doesn't change over time.
-        bases ([Array]): Array containing all the parent joint positions.
-        joints ([Array]): Array containing all the child joint positions.
-        max_range ([Int]): Max length of the animation.
+    ckpt, time1 = ckpt_time(time0)
+    print('-------------- load data spends {:.2f} seconds'.format(ckpt))
 
-    Returns:
-        [type]: [description]
-    """
-    rots = np.empty((max_range-1, 3), dtype=object)
+    # load trained model
+    chk_filename = os.path.join(
+        args.checkpoint, args.resume if args.resume else args.evaluate)
+    print('Loading checkpoint', chk_filename)
+    checkpoint = torch.load(
+        chk_filename, map_location=lambda storage, loc: storage)  # 把loc映射到storage
+    model_pos.load_state_dict(checkpoint['model_pos'])
 
-    for i in range(max_range-1):
-        base_positions = np.split(bases[i], 2)
-        joint_positions = np.split(joints[i], 2)
+    ckpt, time2 = ckpt_time(time1)
+    print('-------------- load 3D model spends {:.2f} seconds'.format(ckpt))
 
-        axis, angle = get_rotation(
-            base_positions, joint_positions, base_pos)
+    #  Receptive field: 243 frames for args.arc [3, 3, 3, 3, 3]
+    receptive_field = model_pos.receptive_field()
+    pad = (receptive_field - 1) // 2  # Padding on each side
+    causal_shift = 0
 
-        rot = axis * angle
+    print('Rendering...')
+    input_keypoints = keypoints.copy()
+    gen = UnchunkedGenerator(None, None, [input_keypoints],
+                             pad=pad, causal_shift=causal_shift, augment=args.test_time_augmentation,
+                             kps_left=kps_left, kps_right=kps_right, joints_left=joints_left, joints_right=joints_right)
+    prediction = evaluate(gen, model_pos, return_predictions=True)
 
-        rots[i] = rot
+    # save 3D joint points
+    np.save(args.viz_output / "test_3d_output.npy",
+            prediction, allow_pickle=True)
 
-    return rots
+    rot = np.array([0.14070565, -0.15007018, -0.7552408,
+                   0.62232804], dtype=np.float32)
+    prediction = camera_to_world(prediction, R=rot, t=0)
 
+    # We don't have the trajectory, but at least we can rebase the height
+    prediction[:, :, 2] -= np.min(prediction[:, :, 2])
+    anim_output = {'Reconstruction': prediction}
+    input_keypoints = image_coordinates(
+        input_keypoints[..., :2], w=1000, h=1002)
 
-def add_rotations(rots, max_range):
-    """
-    Add rotations over time to get an animation.
+    ckpt, time3 = ckpt_time(time2)
+    print(
+        '-------------- generate reconstruction 3D data spends {:.2f} seconds'.format(ckpt))
 
-    Args:
-        rots ([Array]): Calculated rotations.
-        max_range ([Int]): Max length of the animation.
-        rev ([type], optional): [description]. Defaults to None.
-
-    Returns:
-        [Array]: Return the added rotations.
-    """
-    added_rots = np.empty((max_range-1, 3), dtype=object)
-
-    for i in range(max_range-1):
-
-        rot = rots[i]
-        if i != 0:
-            rot += rots[i-1]
-
-        f_rot = rot
-
-        added_rots[i] = f_rot
-
-    return added_rots
-
-
-def sub_parent_rotation(chains, active_joint, rots, max_range):
-    """
-    Substract parent rotations.
-
-    Args:
-        chains ([Array]): Array assembled in parent-child relation containing all rotations.
-        active_joint ([Int]): Index of the active joint which should be edited.
-        rots ([Array]): Array containing the rotations for the active joint.
-        max_range ([Int]): Max length of the animation.
-
-    Returns:
-        [Array]: Array containing the edited rotations for the active joints.
-    """
-    sub_rots = np.empty((max_range-1, 3), dtype=object)
-
-    if active_joint == 4:   # -define which rots should be used if not in order
-        active_joint = 1
-
-    for i in range(max_range-1):
-        rot = rots[i]
-
-        last_rot = chains[i, active_joint - 1]
-
-        f_rot = rot - last_rot
-
-        sub_rots[i] = f_rot
-
-    return sub_rots
-
-
-def post_process(rots, active_joint, max_range):
-    """
-    Edit specific parts of the chain.
-
-    Args:
-        rots ([Array]): Array containing the rots for the active joint.
-        active_joint ([Int]): Index of the active joint which should be edited.
-        max_range ([Int]): Max length of the animation.
-
-    Returns:
-        [Array]: Array containing the edited rotations.
-    """
-    new_rots = np.empty((max_range-1, 3), dtype=object)
-
-    for i in range(max_range-1):
-
-        rot = rots[i]
-
-        if active_joint in (1, 4):  # -only legs, 1 == right leg, 4 == left leg
-            mult = [0.5, 1, 1] if active_joint == 1 else [1, 0.5, 1]
-            rot *= mult
-
-        new_rots[i] = rot
-
-    return new_rots
-
-
-# ------------------------------- Mains ------------------------------- #
-# --------------------------------------------------------------------- #
-
-
-def go_over_chain(data):
-    """
-    Main function.
-    I'm going over every joint and calculate the pure rotation for every joint to it's child.
-    From here I'm trying to handle parenting offsets by substracting the rotation from every parent and 
-    offseting values where it's necessary, eg arms, legs & neck.
-
-    Args:
-        data ([List/Array]): List containing all the positional data from VideoPose3D, shape (Framelength, 17, 3).
-
-    Returns:
-        [Array]: Returns the calculated rotations in an array with the shape (Framelength, 17, 3).
-    """
-    data = np.array(data)
-    max_range, length, size = data.shape
-    last_rots = np.empty((max_range-1, length, size), dtype=object)
-
-    for i in range(length-1):
-
-        base_pos = data[:, i][0]
-        bases = np.column_stack((data[:-1, i], data[1:, i]))
-        joints = np.column_stack((data[:-1, i+1], data[1:, i+1]))
-
-        rotations = trans2rot(base_pos, bases, joints, max_range)
-        added_rots = add_rotations(rotations, max_range)
-
-        if i not in static.Skips:
-            added_rots = sub_parent_rotation(
-                last_rots, i, added_rots, max_range)
-
-        final_rots = post_process(added_rots, i, max_range)
-
-        last_rots[:, i] = final_rots
-
-    return last_rots
+    ckpt, time4 = ckpt_time(time3)
+    print('total spend {:2f} second'.format(ckpt))
 
 
 def maya_process(data):
@@ -304,33 +262,42 @@ def cli():
     Simple wrapper for command line use.
     """
     args = _parse_args()
-    path = args.datapath
+    repo = args.repo
 
-    if not os.path.isfile(path):
-        path = _get_first_search(path)
+    if args.viz_output is None:
+        args.viz_output = repo / "outputs"
 
-    arr = np.load(path)
+    pose_args = _pose_args(repo)
+    pose_args.detector_2d = args.detector_2d
+    pose_args.viz_output = args.viz_output
+    pose_args.viz_video = args.input
 
-    if args.send_maya or args.save_maya:
-        outpath = "{}_maya_rotations.json".format(str(path).rsplit(".", 1)[0])
-        ret = maya_process(arr)
+    detectors = ["Alphapose", "hrnet", "openpose"]
+    if str(repo) not in sys.path:
+        sys.path.append(str(repo))
+        for d in detectors:
+            path = repo / "joints_detectors/{0}".format(d)
+            sys.path.append(str(path))
 
-        if args.send_maya:
-            _send_to_maya(ret)
-            return
-    else:
-        outpath = "{}_raw_rotations.json".format(str(path).rsplit(".", 1)[0])
-        ret = go_over_chain(arr)
+    from pprint import pprint
+    pprint(sys.argv)
+    sys.argv = sys.argv[:1]
+    # pprint(sys.path)
 
-    with open(outpath, 'w', encoding='utf-8') as f:
-        json.dump(ret, f, ensure_ascii=False,
-                  indent=4, cls=NumpyEncoder)
+    videpose_infer(pose_args)
 
-    print("[LOG] Saved results to {0}.".format(outpath))
+    # with open(outpath, 'w', encoding='utf-8') as f:
+    # json.dump(ret, f, ensure_ascii=False,indent = 4, cls = NumpyEncoder)
 
 
 if __name__ == "__main__":
-    cli()
+    # cli()
+    # exit()
+
+    with open(sys.argv[1], "r") as f:
+        data = json.load(f)
+
+    _send_to_maya(data)
 
 ################################
 # IDEA:

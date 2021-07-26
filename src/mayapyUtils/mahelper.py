@@ -1,18 +1,26 @@
 import maya.api.OpenMayaAnim as api2a
 import maya.api.OpenMaya as api2
 import maya.OpenMayaUI as apiUI
+import maya.OpenMayaAnim as apia
+import maya.OpenMaya as api
 import maya.cmds as cmds
 
 
 from shiboken2 import wrapInstance, getCppPointer
-from PySide2 import QtWidgets, QtCore
+from PySide2 import QtWidgets, QtCore, QtNetwork
 from contextlib import contextmanager
 from pyside2uic import compileUi
+from pyUtils import pyhelper
+from time import time, sleep
 from maya import mel
 
-
-import pyhelper
+import traceback
+# import pyhelper 
 import static
+import socket
+import json
+import time
+import math
 import sys
 import os
 
@@ -207,11 +215,14 @@ class WorkspaceControl(object):
         UiSelf.workspaceControl_instance.set_visible(True)
 
 
-# --------------------- PySide2 Server/Client  ------------------------ #
+# ------------------------- PySide2 Server ---------------------------- #
 # --------------------------------------------------------------------- #
 
 
 class ServerBase(QtCore.QObject):
+    """
+    ClientBase located in https://github.com/fsImageries/pyUtils.git for external interpreter usage.
+    """
 
     PORT = static.PORT
     HEADER_SIZE = static.HEADER_SIZE
@@ -309,363 +320,6 @@ class ServerBase(QtCore.QObject):
         self.write({"success": True})
 
 
-class ClientBase(object):
-
-    PORT = static.PORT
-    HEADER_SIZE = static.HEADER_SIZE
-
-    def __init__(self, timeout=2):
-        self.timeout = timeout
-        self.port = self.__class__.PORT
-
-        self.discard_count = 0
-
-    def connect(self, port=-1):
-        if port >= 0:
-            self.port = port
-
-        try:
-            self.client_socket = socket.socket(
-                socket.AF_INET, socket.SOCK_STREAM)
-            self.client_socket.connect((static.HOST, self.port))
-        except:
-            traceback.print_exc()
-            return False
-
-        return True
-
-    def disconnect(self):
-        try:
-            self.client_socket.close()
-        except:
-            traceback.print_exc()
-            return False
-
-        return True
-
-    def send(self, data, json_cls=None):
-        json_data = json.dumps(data, cls=json_cls)
-
-        message = list()
-        message.append("{0:10d}".format(len(json_data.encode())))
-        message.append(json_data)
-
-        try:
-            msg_str = "".join(message)
-            self.client_socket.sendall(msg_str.encode())
-        except:
-            traceback.print_exc()
-            return None
-
-    def recv(self):
-        total_data = list()
-        data = ""
-        reply_length = 0
-        bytes_remaining = ClientBase.HEADER_SIZE
-
-        start_time = time()
-        while time() - start_time < self.timeout:
-            try:
-                data = self.client_socket.recv(bytes_remaining)
-            except Exception as e:
-                print("Exception: {}".format(e))
-                sleep(0.01)
-                continue
-
-            if data:
-                total_data.append(data)
-
-                bytes_remaining -= len(data)
-                if(bytes_remaining <= 0):
-                    for i in range(len(total_data)):
-                        total_data[i] = total_data[i].decode()
-
-                    if reply_length == 0:
-                        header = "".join(total_data)
-                        reply_length = int(header)
-                        bytes_remaining = reply_length
-                        total_data = list()
-                    else:
-                        reply_json = "".join(total_data)
-                        return json.loads(reply_json)
-
-        raise RuntimeError("[ERROR] Timeout waiting for response.")
-
-    def is_valid_data(self, data):
-        if not data:
-            print("[ERROR] Invalid Data.")
-            return False
-
-        if not data["success"]:
-            print("[ERROR] {0} failed: {1}".format(data["cmd"], data["msg"]))
-            return False
-
-        return True
-
-    def ping(self):
-        data = {"cmd": "ping"}
-        reply = self.send(data)
-
-        if self.is_valid_data(reply):
-            return True
-        return False
-
-
-# ---------------------- Maya Server/Client  -------------------------- #
-# --------------------------------------------------------------------- #
-
-
-class O_NectMayaServer(ServerBase):
-    """
-    Get O-Nect at https://github.com/O-Nect/O-Nect.git
-
-
-    Start the server in maya like this:
-    if __name__ == "__main__":
-        import mahelper
-
-        try:
-            server.deleteLater()
-        except:
-            pass
-
-        cmds.evalDeferred("server = mahelper.ServerBase(parent=mahelper.getMayaWin())")
-    """
-
-    def __init__(self, parent=None, mult=1, static=None):
-        if not static:
-            super(O_NectMayaServer, self).__init__(parent)
-
-        self.keyables = dict()
-        self.group = None
-        self.group_check = True
-        self.mult = mult
-        self.static = static
-        self.pairs = static.CocoPairs
-
-    def process_data(self, data):
-
-        frame_id = data['frame_id']
-        iter_id = data["iter_id"]
-
-        mult = self.mult
-
-        newTr = [mult*data['x1_coord'], mult*data['y1_coord']]
-        newTr2 = [mult*data['x2_coord'], mult*data['y2_coord']]
-
-        p1_id = data['p1_id']
-        p2_id = data['p2_id']
-
-        obj1 = self.get_obj(p1_id)
-        obj2 = self.get_obj(p2_id)
-
-        _, _, tz = cmds.xform(obj1, q=True, t=True)
-        _, _, tz2 = cmds.xform(obj2, q=True, t=True)
-        cmds.xform(obj1, t=newTr+[tz], ws=True)
-        cmds.xform(obj2, t=newTr2+[tz2], ws=True)
-
-        if frame_id == 1 and self.group_check:
-
-            # self.grouping()
-            self.parenting()
-            self.keying()
-
-        elif frame_id >= 1:
-            # ls = cmds.listRelatives(self.group)
-            # try:
-            #     if obj1 not in ls:
-            #         cmds.parent(obj1, self.group)
-
-            #     if obj2 not in ls:
-            #         cmds.parent(obj2, self.group)
-            # except:
-            #     pass
-            self.parenting()
-            self.keying(frame_id)
-
-        if not self.static:
-            self.write({"success": True})
-
-    def keying(self, frame_id=0):
-        for obj in self.keyables.values():
-            cmds.setKeyframe(obj, at="translate", t=frame_id+1)
-
-    def grouping(self):
-        # self.group = cmds.group(*self.keyables.values(), n="skel")
-        # cmds.xform(self.group, cp=1)
-        # cmds.xform(self.group, ro=(0,0,180))
-        # self.group_check = False
-
-        self.group = cmds.group(self.keyables[1], n="skel")
-        cmds.xform(self.group, cp=1)
-        cmds.xform(self.group, ro=(0, 0, 180))
-        self.group_check = False
-
-    def parenting(self):
-        for p1, p2 in self.pairs:
-            try:
-                top = self.keyables[p1]
-                bottom = self.keyables[p2]
-            except KeyError:
-                continue
-
-            ls = cmds.listRelatives(top)
-
-            if not ls:
-                cmds.parent(bottom, top)
-            elif bottom not in ls:
-                cmds.parent(bottom, top)
-
-    def get_obj(self, p_id):
-        if not self.keyables.get(p_id, None):
-            obj = self.create_obj()
-            obj = cmds.rename(obj, "{0}_pi_{1}".format(obj, p_id))
-            self.keyables[p_id] = obj
-            return obj
-        else:
-            return self.keyables[p_id]
-
-    def create_obj(self):
-        # return cmds.polySphere()[0]
-        jnt = cmds.joint()
-        # -important to deselect as else the joints will parent the last selected object and mess up positioning
-        cmds.select(cl=True)
-        return jnt
-
-
-class VideoPose3DMayaServer(ServerBase):
-    """
-    Get VideoPose3D at https://github.com/facebookresearch/VideoPose3D.git 
-
-    Start the server in maya like this:
-    if __name__ == "__main__":
-        import mahelper
-
-        try:
-            server.deleteLater()
-        except:
-            pass
-
-        cmds.evalDeferred("server = mahelper.VideoPose3DMayaServer(parent=mahelper.getMayaWin(),mult=1)")
-    """
-
-    def __init__(self, parent=None, mult=5, static=None, default_obj="joint"):
-        if not static:
-            super(VideoPose3DMayaServer, self).__init__(parent)
-
-        self.keyables = dict()
-        self.group = None
-        self.mult = mult
-        self.static = static
-        self.pairs = static.VideoPosePairs
-        self.names = static.VideoPoseNames
-        self.default_obj = default_obj
-        self.objs = []
-
-    def process_data(self, data):
-        self.prep()
-        self.objs = [self.create_obj() for _ in range(17)]
-        positions, rots = data
-
-        self.set_positions(positions)
-        for n, obj in enumerate(self.objs):
-            if rots[n] is not None:
-                self.set_rotations(obj, rots[n])
-
-        self.parenting()
-        self.grouping()
-        self.renaming()
-
-        self.success()
-
-    def process_raw(self, data):
-        mult = self.mult
-        for f, data_1 in enumerate(data):
-            for n, data_2 in enumerate(data_1):
-                obj = self.get_obj(n)
-                self.objs.append(obj)
-                mult_data = [i*mult for i in data_2]
-                cmds.xform(obj, t=mult_data, ws=True)
-
-            if f == 0 and self.default_obj == "joint":
-                self.parenting()
-            self.keying(f)
-
-        self.grouping()
-        self.renaming()
-
-        self.success()
-
-    def set_rotations(self, obj, rots_split):
-        rots_len = len(rots_split[0])
-        set_attribute_keyframes(rots_split, rots_len, obj)
-
-    def set_positions(self, positions):
-        for i in range(17):
-            cmds.xform(self.objs[i], t=positions[i], ws=True)
-
-    def keying(self, frame_id=0):
-        for obj in self.keyables.values():
-            cmds.setKeyframe(obj, at="translate", t=frame_id+1)
-
-    def grouping(self):
-        if self.default_obj == "joint":
-            # -objs[0] bcuz joints
-            self.group = cmds.group(self.objs[0], n="skel")
-        else:
-            self.group = cmds.group(*self.objs, n="skel")
-
-        cmds.xform(self.group, cp=1)
-        cmds.xform(self.group, ro=(0, 0, 180))
-
-    def parenting(self):
-        for p1, p2 in self.pairs:
-            top = self.objs[p1]
-            bottom = self.objs[p2]
-
-            ls = cmds.listRelatives(top)
-
-            if not ls:
-                cmds.parent(bottom, top)
-            elif bottom not in ls:
-                cmds.parent(bottom, top)
-
-    def renaming(self):
-        for k, v in self.names.items():
-            obj = self.objs[k]
-            ret = cmds.rename(obj, v)
-            self.objs[k] = ret
-
-    def get_obj(self, p_id):
-        if not self.keyables.get(p_id, None):
-            obj = self.create_obj()
-            obj = cmds.rename(obj, "{0}_pi_{1}".format(obj, p_id))
-            self.keyables[p_id] = obj
-            return obj
-        return self.keyables[p_id]
-
-    def create_obj(self):
-        obj = getattr(cmds, self.default_obj)()
-
-        if not isinstance(obj, basestring if sys.version[0] != 2 else str):
-            obj = obj[0]
-
-        # -important to deselect as else the joints will parent the last selected object and mess up positioning
-        cmds.select(cl=True)
-        return obj
-
-    def prep(self):
-        cmds.select(cl=True)
-        cmds.currentTime(1)
-
-    def success(self):
-        if not self.static:
-            self.write({"success": True})
-
-        print(
-            "[LOG] Successfully finished processing.\nCreated {0}.".format(self.group))
-
-
 # --------------------- Private Helper Functions ---------------------- #
 # --------------------------------------------------------------------- #
 
@@ -759,6 +413,8 @@ def set_keyframes(plugname, times, values, animtype=0):
     except TypeError:
         animfn = api2a.MFnAnimCurve(plug)
 
+    # print(set((type(x) for x in values)))
+    # print(values)
     animfn.addKeys(times, pyhelper.flatten(values))
 
 
@@ -789,7 +445,7 @@ def set_attribute_keyframes(values, max_range, obj, attr="rotate", animtype=0):
 
     names = ["{0}.{1}{2}".format(obj, attr, c) for c in "XYZ"]
     for n, name in enumerate(names):
-        set_keyframes(name, range(max_range), values[n], animtype)
+        set_keyframes(name, range(1, max_range+1), values[n], animtype)
 
 
 def prefix_name(name, prefix):
