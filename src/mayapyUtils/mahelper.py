@@ -5,23 +5,24 @@ import maya.OpenMayaAnim as apia
 import maya.OpenMaya as api
 import maya.cmds as cmds
 
-
 from shiboken2 import wrapInstance, getCppPointer
 from PySide2 import QtWidgets, QtCore, QtNetwork
 from contextlib import contextmanager
 from pyside2uic import compileUi
-from pyUtils import pyhelper
 from time import time, sleep
 from maya import mel
 
 import traceback
-import static
 import socket
 import json
 import time
 import math
 import sys
 import os
+
+import static
+from pyUtils import pyhelper
+
 
 
 # --------------------------- Shelf Tools ----------------------------- #

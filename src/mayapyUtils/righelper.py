@@ -61,34 +61,14 @@ def import_videopose(path):
         path ([Str]): Path to .Json file.
 
     Returns:
-        [mahelper.VideoPose3DMayaServer]: Placeholder object to hold the relevant information.
+        [mahelper.VideoPose_Importer]: Importer class which holds the relevant information.
     """
     with open(path, "r") as f:
         data = json.load(f)
 
-    pose2maya.VideoPose3DMayaServer.construct(data)
-
-    # pose = mahelper.VideoPose3DMayaServer(
-    #     parent=mahelper.getMayaWin(), mult=1, static_cls=True)
-
-    # objs = [pose.create_obj() for _ in range(17)]
-    # pose.objs = objs
-
-    # pose.parenting()
-
-    # cmds.currentTime(1)
-    # for _ in range(len(data)):
-    #     pose.set_positions(data[int(cmds.currentTime(q=True)-1)])
-
-    #     for obj in pose.objs:
-    #         cmds.setKeyframe(obj, at="translate")
-    #         cmds.setKeyframe(obj, at="rotate")
-
-    #     cmds.currentTime(cmds.currentTime(q=True)+1)
-    # cmds.currentTime(1)
-
-    # pose.grouping()
-    # return pose
+    pose = pose2maya.VideoPose3D_Importer()
+    pose.create_skeleton(data)
+    return pose
 
 
 # ------------------------- Rig 'T-Posing' ---------------------------- #
