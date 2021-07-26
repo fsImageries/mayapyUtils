@@ -4,5 +4,8 @@
 __pycache__
 .vscode
 build
-.DS_STORE
-.DS_*
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
