@@ -2,9 +2,8 @@ import maya.cmds as cmds
 import math
 import json
 import mahelper
-# import pyhelper
-from pyUtils import pyhelper
 import pose2maya
+from pyUtils import pyhelper
 # TODO change list comprehensions to pass pure lists into commands as they are designed that way :/
 
 

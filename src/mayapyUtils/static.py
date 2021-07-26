@@ -1,3 +1,6 @@
+import maya.api.OpenMaya as api2
+
+
 # -------------------- Server/Client Information ---------------------- #
 # --------------------------------------------------------------------- #
 
@@ -68,3 +71,11 @@ aimocap_shelftool = {
 VideoPoseChains = [[0, 1, 2, 3], [0, 4, 5, 6], [7, 8, 9, 10], [11, 12, 13], [14, 15, 16]]
 
 Skips = [0, 7, 11, 14]
+
+# --------------------- BasicMayaIO information ----------------------- #
+# --------------------------------------------------------------------- #
+
+AIDEFAULT = "aiStandardSurface"
+
+APIENUM_strToNum = vars(api2.MFn)
+APIENUM_numToStr = {v: k for k, v in APIENUM_strToNum.items()}

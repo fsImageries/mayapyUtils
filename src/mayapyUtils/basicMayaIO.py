@@ -4,17 +4,10 @@ from maya import cmds
 
 import customTypes
 import mahelper
-import pyhelper
+import static
 import re
 
-
-# ------------------------ Static Information ------------------------- #
-# --------------------------------------------------------------------- #
-
-AIDEFAULT = "aiStandardSurface"
-
-APIENUM_strToNum = vars(api2.MFn)
-APIENUM_numToStr = {v: k for k, v in APIENUM_strToNum.items()}
+from pyUtils import pyhelper
 
 
 # --------------------------- Basic Maya IO --------------------------- #
@@ -137,7 +130,7 @@ class MIO_BasicIO(object):
         except KeyError:
             raise TypeError("%s: Unsupported Type: %s" %
                             (plug.partialName(True, True, True, False, True, True),
-                             APIENUM_numToStr.get(apiType, apiType)))
+                             static.APIENUM_numToStr.get(apiType, apiType)))
 
         return apiFunc(plug, obj)
 
@@ -358,14 +351,14 @@ class MIO_BasicIO(object):
         except KeyError:
             raise TypeError("%s: Unsupported Type: %s" %
                             (plug.partialName(True, True, True, False, True, True),
-                             APIENUM_numToStr.get(apiType, apiType)))
+                             static.APIENUM_numToStr.get(apiType, apiType)))
 
         return apiFunc(plug, value, obj)
 
     # --------------------------------Convenient Methods------------------------------- #
 
     @classmethod
-    def create_node(cls, nodeName, nodeType=AIDEFAULT, shading=False, string=False):
+    def create_node(cls, nodeName, nodeType=static.AIDEFAULT, shading=False, string=False):
         """
         Convenient Method for creating Nodes (also as ShadingNodes) and returning the new MObject.
         Defaults creates a new Arnold surface shader. 

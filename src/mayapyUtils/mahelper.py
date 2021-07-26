@@ -15,7 +15,6 @@ from time import time, sleep
 from maya import mel
 
 import traceback
-# import pyhelper 
 import static
 import socket
 import json
