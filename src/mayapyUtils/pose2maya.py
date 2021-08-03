@@ -142,7 +142,7 @@ class PoseMayaServer(ServerBase):
         except:
             pass
 
-        cmds.evalDeferred("server = pose2maya.VideoPose3DMayaServer(parent=mahelper.getMayaWin(),mult=1)")
+        cmds.evalDeferred("server = pose2maya.PoseMayaServer(parent=mahelper.getMayaWin(),mult=1)")
     """
 
     def __init__(self, parent=None, importer="vp3d", mult=5, default_obj="joint"):
@@ -195,6 +195,7 @@ class VideoPose3D_Importer:
         def make_rad(point):
             return [math.radians(x) for x in point]
 
+        do_print = True
         for frame, joints in enumerate(data):
             # rot_per_frame = list(xrange(17))
             for n, joint in enumerate(joints):
@@ -206,6 +207,10 @@ class VideoPose3D_Importer:
                         pair for pair in self.pairs if pair[0] == n][idx]
                     p1 = joint
                     p2 = joints[idx2]
+
+                    if do_print:
+                        print("Parent={0}".format(obj))
+                        print("Child={0}".format(self.objs[idx2]))
                     rot = self._get_rotation(p1, p2)
 
                     # if not frame == 0:
@@ -215,6 +220,10 @@ class VideoPose3D_Importer:
                     #            cur in zip(last_rot, rot)]
                     # rot_per_frame[n] = make_rad(rot)
                     cmds.xform(obj, ro=rot, ws=True)
+                    # cmds.setKeyframe(obj, t=frame, v=rot[0], at='rotateX')
+                    # cmds.setKeyframe(obj, t=frame, v=rot[1], at='rotateY')
+                    # cmds.setKeyframe(obj, t=frame, v=rot[2], at='rotateZ')
+                    cmds.setKeyframe(obj, at="rotate", t=frame+1)
                 except IndexError:
                     pass
                     # rot_per_frame[n] = []
@@ -224,14 +233,15 @@ class VideoPose3D_Importer:
                     cmds.xform(obj, t=mult_data, ws=True)
                     # pos_keys.append(mult_data)
             # rot_keys.append(rot_per_frame)
+            do_print = False
 
             if frame == 0 and self.default_obj == "joint":
                 self._parenting()
             self._keying(frame)
             cmds.currentTime(cmds.currentTime(q=True)+1)
 
-            if frame > 100:
-                print("Frame done: {0}/{1}\n".format(frame, frame_length)),
+            # if frame > 100:
+            #     print("Frame done: {0}/{1}\n".format(frame, frame_length)),
 
         # self.set_rotations(rot_keys) #TODO
         # self.set_positions(pos_keys)
@@ -304,7 +314,7 @@ class VideoPose3D_Importer:
     def _keying(self, frame_id=0):
         for obj in self.keyables.values():
             cmds.setKeyframe(obj, at="translate", t=frame_id+1)
-            cmds.setKeyframe(obj, at="rotate", t=frame_id+1)
+            # cmds.setKeyframe(obj, at="rotate", t=frame_id+1)
 
     def _grouping(self):
         if self.default_obj == "joint":
@@ -343,6 +353,7 @@ class VideoPose3D_Importer:
         return self.keyables[p_id]
 
     def _create_obj(self):
+
         obj = getattr(cmds, self.default_obj)()
 
         if not isinstance(obj, basestring):
@@ -355,3 +366,157 @@ class VideoPose3D_Importer:
     def _prep(self):
         cmds.select(cl=True)
         cmds.currentTime(1)
+
+
+class VideoPose3D_Skeleton:
+
+    def __init__(self, mult=5):
+        self.pairs = sorted(static.VideoPosePairs)
+        self.mult = mult
+        self.jnts = []
+        self.jnts_proj = []
+        self.drivers = []
+
+    def create(self, data, suffix="vp3d"):
+        self.frames = len(data)
+        self._skeleton(data, suffix)
+
+        self._parenting()
+        # self._parenting(proj=True)
+        self._parenting(drivers=True, grp=True)
+
+        self._orientate()
+
+    @staticmethod
+    def _get_rotation(p1, p2):
+        # calc rot for 3d json
+        punkt_a = api.MPoint(p1[0], p1[1], p1[2])
+        punkt_b = api.MPoint(p2[0], p2[1], p2[2])
+        rot_vector = punkt_a - punkt_b
+        world = api.MVector(0, 1, 0)
+        quat = api.MQuaternion(world, rot_vector, 1)
+        mat = api.MTransformationMatrix()
+        util = api.MScriptUtil()
+        util.createFromDouble(0, 0, 0)
+        rot_i = util.asDoublePtr()
+        mat.setRotation(rot_i, api.MTransformationMatrix.kXYZ)
+        mat = mat.asMatrix() * quat.asMatrix()
+        quat = api.MTransformationMatrix(mat).rotation()
+        m_rotation = api.MVector(math.degrees(quat.asEulerRotation().x),
+                                 math.degrees(quat.asEulerRotation().y),
+                                 math.degrees(quat.asEulerRotation().z)
+                                 )
+
+        return (m_rotation[0], m_rotation[1], m_rotation[2])
+
+    def _jnt_lookup(self, idx, proj=False, drivers=False):
+        if proj:
+            jnts = self.jnts_proj
+        elif drivers:
+            jnts = self.drivers
+        else:
+            jnts = self.jnts
+
+        for i in jnts:
+            name_num = i.rsplit("_", 2)[1]
+            if int(name_num) == idx:
+                return i
+
+    def _skeleton(self, data, suffix="vp3d"):
+        if not cmds.objExists("drivers_{0}".format(suffix)):
+            cmds.group(n="drivers_{0}".format(suffix), em=True)
+
+        for frame, jnt in enumerate(data):
+            if not cmds.objExists("anim_joint"):
+                cmds.group(n="anim_joint", em=True)
+                # anim_grp_prj = cmds.group(n="anim_joint_2d", em=True)
+                # cmds.parent(anim_grp_prj, "anim_joint")
+
+            for jnt_id, trans in enumerate(jnt):
+                trans = [i*self.mult for i in trans]
+                if not cmds.objExists("anim_jnt_driver_{0}_{1}".format(jnt_id, suffix)):
+                    cmds.select(clear=True)
+                    jnt = cmds.joint(n="jnt_{0}_{1}".format(
+                        jnt_id, suffix), relative=True)
+                    self.jnts.append(jnt)
+                    # cmds.setAttr("{0}.radius".format(jnt), 10)
+                    # cmds.setAttr("{0}.displayLocalAxis".format(jnt), 1)
+
+                    # match same pos for first frame
+                    # print(trans[0], trans[1], trans[2], "\n"),
+                    cmds.move(trans[0], trans[1], trans[2], jnt)
+
+                    anim_grp_child = cmds.listRelatives(
+                        "anim_joint", children=True) or []
+                    if not jnt in anim_grp_child:
+                        cmds.parent(jnt, "anim_joint")
+
+                    # create 2d projection
+                    # jnt_proj = cmds.duplicate(
+                    #     jnt, n="jnt_{0}_proj".format(jnt_id))
+                    # self.jnts_proj.append(jnt_proj[0])
+
+                    # cmds.pointConstraint(jnt, jnt_proj, mo=False, skip="z")
+                    # cmds.setAttr("{0}.translateZ".format(jnt_proj[0]), 0)
+                    # cmds.parent(jnt_proj, "anim_joint_2d")
+
+                    # driver locator
+                    driver = cmds.spaceLocator(
+                        n="anim_jnt_driver_{0}_{1}".format(jnt_id, suffix))
+                    # drive jnt with animated locator frim frame 0
+                    cmds.pointConstraint(driver, jnt)
+                    # if not driver in cmds.listRelatives("drivers_{0}".format(suffix), children=True) or []:
+                    cmds.parent(driver, "drivers_{0}".format(suffix))
+                    self.drivers.append(driver[0])
+
+                # add trans anim values to driver locator
+                cmds.setKeyframe("anim_jnt_driver_{0}_{1}".format(
+                    jnt_id, suffix), t=frame, v=trans[0], at='translateX')
+                cmds.setKeyframe("anim_jnt_driver_{0}_{1}".format(
+                    jnt_id, suffix), t=frame, v=trans[1], at='translateY')
+                cmds.setKeyframe("anim_jnt_driver_{0}_{1}".format(
+                    jnt_id, suffix), t=frame, v=trans[2], at='translateZ')
+
+        # hacking 3d-pose-baseline coord. to maya
+        cmds.setAttr("drivers_{0}.rotateX".format(suffix), -180)
+
+    def _parenting(self, proj=False, drivers=False, grp=False):
+        for p1, p2 in self.pairs:
+            top = self._jnt_lookup(p1, proj=proj, drivers=drivers)
+            bottom = self._jnt_lookup(p2, proj=proj, drivers=drivers)
+
+            ls = cmds.listRelatives(top)
+
+            if not ls or bottom not in ls:
+                if not grp:
+                    cmds.parent(bottom, top)
+                else:
+                    b_name = "{0}_ctrl_grp".format(bottom)
+                    bottom = cmds.group(bottom, n="{0}_ctrl_grp".format(
+                        bottom)) if not cmds.objExists(b_name) else b_name
+
+                    t_name = "{0}_ctrl_grp".format(top)
+                    top = cmds.group(top, n="{0}_ctrl_grp".format(
+                        top)) if not cmds.objExists(t_name) else t_name
+                    cmds.parent(bottom, top)
+
+    def _orientate(self):
+        skips = [0, 7, 8, 9, 10]
+        for frame in xrange(self.frames):
+            for j1, j2 in self.pairs:
+                if j1 in skips:
+                    continue
+
+                parent_jnt = self._jnt_lookup(j1)
+                child_jnt = self._jnt_lookup(j2)
+
+                p1 = cmds.xform(parent_jnt, q=True, t=True, ws=True)
+                p2 = cmds.xform(child_jnt, q=True, t=True, ws=True)
+
+                rotation = self._get_rotation(p1, p2)
+                cmds.setKeyframe(parent_jnt, t=frame,
+                                 v=rotation[0], at='rotateX')
+                cmds.setKeyframe(parent_jnt, t=frame,
+                                 v=rotation[1], at='rotateY')
+                cmds.setKeyframe(parent_jnt, t=frame,
+                                 v=rotation[2], at='rotateZ')
